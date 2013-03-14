@@ -1,0 +1,29 @@
+doctype 5
+html
+	head
+		title Foods in meal at #{meal.created_at}
+	body
+		h1 Foods in meal at #{meal.created_at}
+		table
+			tr
+				th Name
+				th Grams
+				th Calories
+				th 
+			each m_food in meal_foods
+				tr
+					td #{m_food.food.name}
+					td #{m_food.grams}
+					td #{m_food.grams * m_food.food.cals / 100}
+					td 
+						form(action="#{help.mealUrl(meal)}", method="post")
+							button(name="delete", value="#{m_food.food_id}") X
+			form(action="#{help.mealUrl(meal)}", method="post")
+				tr
+					td
+						input(type="text", name="food_name")
+					td
+						input(type="text", name="grams")
+					td
+						button(name="create", value="1") Save
+

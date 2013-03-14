@@ -1,7 +1,8 @@
 var
 	_      = require('../nodam/lib/curry.js'),
+	orm    = require('./lib/orm.js'),
 	nodam  = require('../nodam/lib/nodam.js'),
-	sqlite = require('../nodam/lib/sqlite.js'),
+	sql    = require('../nodam/lib/sqlite.js'),
 	qs     = require('querystring'),
 	jade   = require('jade'),
 	fs     = nodam.fs(),
@@ -13,6 +14,8 @@ var
 	PUT    = 'PUT',
 	DELETE = 'DELETE',
 	error404, getPost, dbM;
+
+var fmap = _.flip(_.map);
 
 function getJade(file, data) {
 	return fs.readFile(file, 'ascii').pipe(function(view) {
@@ -28,7 +31,7 @@ error404 = nodam.get('response').pipe(function(resp) {
 });
 
 function error403(msg) {
-	nodam.get('response').pipe(function(resp) {
+	return nodam.get('response').pipe(function(resp) {
 		resp.status = 404;
 		resp.write(msg);
 		
@@ -57,7 +60,7 @@ getPost = nodam.get('request') .pipe(function(req) {
 	}
 });
 
-dbM = sqlite.database('diet.db').pipe(function(db) {
+dbM = sql.database('diet.db').pipe(function(db) {
 	return db.serialize().then(nodam.result(db));
 });
 
@@ -94,19 +97,6 @@ function uriToWord(word) {
 	return word.replace(/\+/g, ' ');
 }
 
-function condition(obj) {
-	var conds = [];
-	_.forOwn(obj, function(val, key) {
-		conds.push(key + "='" + val + "'");
-	});
-
-	if (conds.length) {
-		return ' WHERE ' + conds.join();
-	} else {
-		return '';
-	}
-}
-
 function matchUrl(regexOrString, url) {
 	if (regexOrString instanceof RegExp) {
 		return url.match(regexOrString);
@@ -141,7 +131,6 @@ function routeRequest(request, routes) {
 // undefined means "not retrieved"; null means retrieved but empty
 // except for ingredients, where [] means retrieved but empty
 var foods, ingredients, meals, meal_foods;
-var orm    = require('./lib/orm.js'),
 
 foods = new orm.Table({
 	name: 'foods',
@@ -186,6 +175,10 @@ function foodUrl(food) {
 	return '/food/' + wordToUri(food.name);
 }
 
+function mealUrl(meal) {
+	return '/meal/' + meal.id;
+}
+
 var queries = {
 	foods: 'SELECT * FROM foods',
 	foods_insert: "INSERT INTO foods (name, type, cals, grams) VALUES ('<%= name %>', '<%= type %>', '<%= cals %>', '<%= grams %>')",
@@ -194,11 +187,26 @@ var queries = {
 	ingredients_update: 'UPDATE ingredients SET grams=<%= grams %> WHERE food_id=<%= food_id %> AND ingredient_id=<%= update %>',
 	ingredients_with_foods: 'SELECT i.food_id, i.ingredient_id, i.grams, ' +
 		'f.id, f.name, f.type, f.cals, f.grams AS food_grams FROM ingredients i ' +
-		'JOIN foods f ON i.ingredient_id=f.id'
+		'JOIN foods f ON i.ingredient_id=f.id',
+	meals: 'SELECT * FROM meals',
+	meals_new: "INSERT INTO meals (created_at) VALUES (datetime('now'))",
+	meal_foods_with_foods: 'SELECT mf.meal_id, mf.food_id, mf.grams, ' +
+		'f.id, f.name, f.type, f.cals, f.grams AS food_grams FROM meal_foods mf ' +
+		'JOIN foods f ON mf.food_id=f.id',
+	meal_foods_update: 'UPDATE meal_foods SET grams=<%= grams %> ' +
+		'WHERE meal_id=<%= meal_id %> AND food_id=<%= food_id %>'
 };
 
 function getFood(db, id) {
-	return db.get(queries.food + condition({id: id}));
+	return db.get(queries.foods + orm.condition({id: id}));
+}
+
+function foodByName(db, name) {
+	return db.get(queries.foods + orm.condition({name: name}));
+}
+
+function getMeal(db, id) {
+	return db.get(queries.meals + orm.condition({id: id}));
 }
 
 function hydrateIngredient(row) {
@@ -216,12 +224,28 @@ function hydrateIngredient(row) {
 	};
 }
 
+function hydrateMealFood(row) {
+	return {
+		meal_id: row.meal_id,
+		ingredient_id: row.food_id,
+		grams: row.grams,
+		food: {
+			id: row.id,
+			name: row.name,
+			type: row.type,
+			cals: row.cals,
+			grams: row.food_grams
+		}
+	};
+}
+
 var helper = {
 	number: function(digits, num) {
 		var strs = (num + '').split('.');
 		return strs[0] + (strs[1] ? '.' + strs[1].slice(0, digits) : '');
 	},
-	foodUrl: foodUrl
+	foodUrl: foodUrl,
+	mealUrl: mealUrl
 };
 
 var actions = {
@@ -233,19 +257,19 @@ var actions = {
 						return nodam.result(food);
 					} else {
 						return db.all(
-							queries.ingredients_with_foods + condition({ food_id: food.id })
-						). mmap(function(rows) {
-							return _.map(rows, hydrateIngredient);
-						}). pipe(function (ingredients) {
-							food.ingredients = ingredients;
-							if (food.grams) {
-								food.cals = ingredients.reduce(function(sum, i) {
-									return sum + i.food.cals * i.grams;
-								}, 0) / food.grams;
-							}
+							queries.ingredients_with_foods + orm.condition({ food_id: food.id })
+						) .mmap(
+							_.curry(fmap, hydrateIngredient)
+						) .pipe(function (ingredients) {
+								var ffood = _.set(food, 'ingredients', ingredients);
+								if (food.grams) {
+									ffood.cals = ingredients.reduce(function(sum, i) {
+										return sum + i.food.cals * i.grams;
+									}, 0) / food.grams;
+								}
 
-							return nodam.result(food);
-						});
+								return nodam.result(ffood);
+							});
 					}
 				});
 
@@ -259,7 +283,7 @@ var actions = {
 	food: function(match) {
 		return nodam.combine([dbM, getPost]).pipeArray(function(db, post) {
 			if (post.delete) {
-				return db.run('DELETE FROM foods ' + condition({ id: post.delete }));
+				return db.run('DELETE FROM foods ' + orm.condition({ id: post.delete }));
 			} else if (post.create) {
 				return db.run(_.template(queries.foods_insert, {
 					name: post.food_name,
@@ -287,9 +311,7 @@ var actions = {
 		if (! food_name) return error404;
 
 		return dbM .pipe(function(db) {
-			return db.get(
-				queries.foods + condition({ name: food_name })
-			).pipe(function(food) {
+			return foodByName(db, food_name) .pipe(function(food) {
 				var m;
 
 				if (! food) {
@@ -297,7 +319,7 @@ var actions = {
 				} else {
 					if (food.type === 'dish') {
 						m = db.all(
-							queries.ingredients_with_foods + condition({ food_id: food.id }) + ' ORDER BY i.grams DESC'
+							queries.ingredients_with_foods + orm.condition({ food_id: food.id }) + ' ORDER BY i.grams DESC'
 						).pipe(function(ingredients) {
 							return getJade('views/ingredients.jade', {
 								ingredients: ingredients, food: food, food_url: foodUrl(food)
@@ -318,9 +340,7 @@ var actions = {
 		if (! food_name) return error404;
 
 		return nodam.combine([dbM, getPost]).pipeArray(function(db, post) {
-			return db.get(
-				queries.foods + condition({ name: food_name })
-			).pipe(function(food) {
+			return foodByName(db, food_name) .pipe(function(food) {
 				var m;
 
 				if (!food) {
@@ -330,12 +350,10 @@ var actions = {
 				} else if (post.delete) {
 					m = db.run(
 						'DELETE FROM ingredients ' +
-						condition({ food_id: post.food_id, ingredient_id: post.delete })
+						orm.condition({ food_id: post.food_id, ingredient_id: post.delete })
 					);
 				} else if (post.create) {
-					m = db.get(
-						queries.foods + condition({ name: post.ing_name })
-					).pipe(function(ingred) {
+					m = foodByName(db, post.ing_name) .pipe(function(ingred) {
 						if (!ingred) return  nodam.result();
 
 						return db.run(_.template(
@@ -356,13 +374,107 @@ var actions = {
 				}
 			});
 		});
+	},
+
+	meals: function(match) {
+		return dbM
+			.pipe(_.method('all', queries.meals + ' ORDER BY created_at DESC'))
+			.pipe(function(meals) {
+				return getJade('views/meals.jade', { meals: meals, help: helper });
+			}) .pipe(success);
+	},
+
+	manageMeals: function(match) {
+		return nodam.combine([dbM, getPost]).pipeArray(function(db, post) {
+			if (post.delete) {
+				return db
+					.run('DELETE FROM meals ' + orm.condition({ id: post.delete }))
+					.then(redirect('/meals'));
+			} else if (post.create) {
+				return db
+					.run(queries.meals_new)
+					.then(db.get(
+						queries.meals + orm.condition({ id: orm.literal('last_insert_rowid()') })
+					)) .pipe(_.compose(redirect, mealUrl));
+			} else {
+				// if nothing to do, send back to meals
+				return redirect('/meals');
+			}
+		});
+	},
+
+	meal: function(match) {
+		if (! match[1]) return error404;
+
+		return dbM .pipe(function(db) {
+			return db.get(
+				queries.meals + orm.condition({ id: match[1] })
+			).pipe(function(meal) {
+				if (! meal) {
+					return error404;
+				} else {
+					return db.all(
+						queries.meal_foods_with_foods + orm.condition({ meal_id: meal.id })
+					) .mmap(_.curry(fmap, hydrateMealFood))
+					.pipe(function(meal_foods) {
+						return getJade('views/meal.jade', {
+							meal_foods: meal_foods, meal: meal, help: helper
+						});
+					}).pipe(success);
+				}
+			});
+		});
+	},
+
+	mealFoods: function(match) {
+		var meal_id = match[1];
+		if (! meal_id) return error404;
+
+		return nodam.combine([dbM, getPost]).pipeArray(function(db, post) {
+			return db.get(
+				queries.meals + orm.condition({ id: meal_id })
+			).pipe(function(meal) {
+				var m;
+
+				if (! meal) {
+					return error403('No meal with that id: ' + meal_id);
+				} else if (post.delete) {
+					m = db.run(
+						'DELETE FROM meal_foods ' +
+						orm.condition({ meal_id: meal_id, food_id: post.delete })
+					);
+				} else if (post.create) {
+					m = foodByName(db, post.food_name) .pipe(function(food) {
+						if (! food) return  nodam.result();
+
+						return db.run(_.template(
+							"INSERT INTO meal_foods (meal_id, food_id, grams) VALUES (" + meal.id + ", " +
+							food.id + ", '<%= grams %>')", post))
+					});
+				} else if (post.update) {
+					m = db.run(_.template(
+						queries.meal_foods_update,
+						post
+					));
+				}
+
+				if (m) {
+					return m.then(redirect(match[0]));
+				} else {
+					return error403('Invalid form submission.');
+				}
+			});
+		});
 	}
 };
 
 var routes = [
-	[ '/',        { GET: actions.root }],
+	[ '/',                  { GET: actions.root }],
 	[ /\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }],
-	[ /\/food(\/?)$/,     { POST: actions.food }]
+	[ /\/food(\/?)$/,       { POST: actions.food }],
+	[ /\/meals(\/?)$/,      { GET: actions.meals }],
+	[ /\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }],
+	[ /\/meal(\/?)$/,       { POST: actions.manageMeals }]
 ];
 
 nodam.http().createServer(function(request, response) {
