@@ -60,9 +60,23 @@ getPost = nodam.get('request') .pipe(function(req) {
 	}
 });
 
+/*
 dbM = sql.database('diet.db').pipe(function(db) {
-	return db.serialize().then(nodam.result(db));
+	return db.serialize().then(nodam.result(db)).set('db', db);
 });
+	*/
+
+
+dbM = nodam.get('db')
+	.pipe(function(db) {
+		if (db) {
+			return nodam.result(db);
+		} else {
+			return sql.database('diet.db').pipe(function(db_open) {
+				return db_open.serialize().set('db', db_open);
+			});
+		}
+	});
 
 function redirect(url) {
 	return nodam.get('response').pipe(function(resp) {
