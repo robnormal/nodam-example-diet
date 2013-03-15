@@ -262,6 +262,17 @@ var helper = {
 	mealUrl: mealUrl
 };
 
+function requireString(str, err) {
+	if (! str) throw new Error(err || 'empty string');
+}
+
+function requireQuery(template, data) {
+	var q = _.template(template, data);
+	requireString(q, 'bad query template: ' + template);
+
+	return q;
+}
+
 var actions = {
 	root: function(match) {
 		return dbM .pipe(function(db) {
@@ -445,31 +456,42 @@ var actions = {
 		if (! meal_id) return error404;
 
 		return nodam.combine([dbM, getPost]).pipeArray(function(db, post) {
+
+			console.log( queries.meals + orm.condition({ id: meal_id }));
+
 			return db.get(
 				queries.meals + orm.condition({ id: meal_id })
 			).pipe(function(meal) {
-				var m;
+				var m, q;
 
 				if (! meal) {
 					return error403('No meal with that id: ' + meal_id);
 				} else if (post.delete) {
-					m = db.run(
-						'DELETE FROM meal_foods ' +
-						orm.condition({ meal_id: meal_id, food_id: post.delete })
-					);
+					var cond = orm.condition({ meal_id: meal_id, food_id: post.delete });
+
+					console.log('DELETE FROM meal_foods ' + cond);
+
+					m = db.run('DELETE FROM meal_foods ' + cond);
 				} else if (post.create) {
 					m = foodByName(db, post.food_name) .pipe(function(food) {
-						if (! food) return  nodam.result();
+						if (! food) return nodam.result();
 
-						return db.run(_.template(
+						q = _.template(
 							"INSERT INTO meal_foods (meal_id, food_id, grams) VALUES (" + meal.id + ", " +
-							food.id + ", '<%= grams %>')", post))
+								food.id + ", '<%= grams %>')",
+							post
+						);
+
+						console.log(q);
+
+						return db.run(q);
 					});
 				} else if (post.update) {
-					m = db.run(_.template(
-						queries.meal_foods_update,
-						post
-					));
+					q = _.template(queries.meal_foods_update, post);
+
+						console.log(q);
+
+					m = db.run(q);
 				}
 
 				if (m) {
