@@ -241,7 +241,7 @@ function hydrateIngredient(row) {
 function hydrateMealFood(row) {
 	return {
 		meal_id: row.meal_id,
-		ingredient_id: row.food_id,
+		food_id: row.food_id,
 		grams: row.grams,
 		food: {
 			id: row.id,
@@ -457,8 +457,6 @@ var actions = {
 
 		return nodam.combine([dbM, getPost]).pipeArray(function(db, post) {
 
-			console.log( queries.meals + orm.condition({ id: meal_id }));
-
 			return db.get(
 				queries.meals + orm.condition({ id: meal_id })
 			).pipe(function(meal) {
@@ -468,8 +466,6 @@ var actions = {
 					return error403('No meal with that id: ' + meal_id);
 				} else if (post.delete) {
 					var cond = orm.condition({ meal_id: meal_id, food_id: post.delete });
-
-					console.log('DELETE FROM meal_foods ' + cond);
 
 					m = db.run('DELETE FROM meal_foods ' + cond);
 				} else if (post.create) {
@@ -482,14 +478,10 @@ var actions = {
 							post
 						);
 
-						console.log(q);
-
 						return db.run(q);
 					});
 				} else if (post.update) {
 					q = _.template(queries.meal_foods_update, post);
-
-						console.log(q);
 
 					m = db.run(q);
 				}
