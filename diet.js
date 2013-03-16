@@ -19,6 +19,18 @@ var
 
 var fmap = _.flip(_.map);
 
+function showMonadErr(err) {
+	console.log(err.message);
+	console.log(err.stack);
+
+	if (err.monad) {
+		var m = _.clone(err.monad);
+		delete m.stack_at_origin; // show separately
+		console.log(m);
+		console.log('Stack at origin:', err.monad.stack_at_origin);
+	}
+}
+
 function getJade(file, data) {
 	return fs.readFile(file, 'ascii').pipe(function(view) {
 		return nodam.result(jade.compile(view)(data));
@@ -44,7 +56,6 @@ function error403(msg) {
 getPost = nodam.get('request') .pipe(function(req) {
 	if (req.method === POST) {
 		var postData = '';
-		var onM = nodam.methodToAsyncMonad('on');
 
 		req.on('data', function (data) {
 			if (postData.length < 1000) {
@@ -59,6 +70,7 @@ getPost = nodam.get('request') .pipe(function(req) {
 		});
 	
 		/*
+		var onM = nodam.methodToAsyncMonad('on');
 		return onM(req, 'end').pipe(function () {
 			// must call in here, after data has been constructed
 			// ## DON'T change this to a then() ##
@@ -70,20 +82,12 @@ getPost = nodam.get('request') .pipe(function(req) {
 	}
 });
 
-/*
-dbM = sql.database('diet.db').pipe(function(db) {
-	return db.serialize().then(nodam.result(db)).set('db', db);
-});
-	*/
-
-
 dbM = nodam.get('db')
 	.pipe(function(db) {
 		if (db) {
 			return nodam.result(db);
 		} else {
 			return sql.database('diet.db').pipe(function(db_open) {
-				// return db_open.serialize().set('db', db_open);
 				return nodam.set('db', db_open);
 			});
 		}
@@ -132,9 +136,9 @@ function matchUrl(regexOrString, url) {
 
 function routeRequest(request, routes) {
 	var
-		url = decodeURIComponent(request.url),
+		url    = decodeURIComponent(request.url),
 		method = request.method,
-		len = routes.length,
+		len    = routes.length,
 		match, action, i;
 
 	for (i = 0; i < len; i++) {
@@ -151,50 +155,6 @@ function routeRequest(request, routes) {
 
 	return M.nothing;
 }
-
-/*
-// undefined means "not retrieved"; null means retrieved but empty
-// except for ingredients, where [] means retrieved but empty
-var foods, ingredients, meals, meal_foods;
-
-foods = new orm.Table({
-	name: 'foods',
-	columns: ['id', 'name', 'type', 'cals', 'grams'],
-	primary_key: ['id'],
-	relations: [
-		['ingredients', ingredients, orm.Relation.HAS_MANY]
-	]
-});
-
-ingredients = new orm.Table({
-	name: 'ingredients',
-	columns: ['food_id', 'ingredient_id', 'grams'],
-	primary_key: ['food_id', 'ingredient_id'],
-	relations: [
-		['food', foods, orm.Relation.HAS_ONE],
-		['ingredient', ingredients, orm.Relation.HAS_ONE]
-	]
-});
-
-meals = new orm.Table({
-	name: 'meals',
-	columns: ['id', 'created_at'],
-	primary_key: ['id'],
-	relations: [
-		['foods', foods, orm.Relation.HAS_MANY]
-	]
-});
-
-meal_foods = orm.Table({
-	name: 'meal_foods',
-	columns: ['meal_id', 'food_id', 'grams'],
-	primary_key: ['meal_id', 'food_id'],
-	relations: [
-		['meal', meals, orm.Relation.HAS_ONE],
-		['food', foods, orm.Relation.HAS_ONE]
-	]
-});
-*/
 
 function foodUrl(food) {
 	return '/food/' + wordToUri(food.name);
@@ -293,29 +253,30 @@ function fillIngredients(food) {
 		return nodam.result(food);
 	} else {
 		return dbM.pipe(function(db) {
-			return db.all(
-				'SELECT f.*, i.grams AS iGrams FROM foods f JOIN ingredients i ON i.ingredient_id=f.id' +
-					orm.condition({ 'i.food_id': food.id })
-			) .pipe(function (ings) {
-				return nodam.result(_.set(food, 'ingredients', ings));
-			});
+			return db
+				.all(queries.ingredients_with_foods +
+					orm.condition({ 'i.food_id': food.id }))
+				.pipe(function (ings) {
+					return nodam.result(_.set(food, 'ingredients', ings));
+				});
 		});
 	}
 }
 
 function updateFoodCals(food) {
 	if (food.type === 'dish') {
-		return dbM.pipe(function(db) {
-			return fillIngredients(food) .pipe(function(ings) {
-				return nodam.result(
-					_.reduce(ings, function(ing, memo) {
-						return ing.cals * ing.iGrams;
-					}, 0)
-				);
-			}).then(db.get(
-				'SELECT cals FROM foods' + orm.condition({ id: food.id })
-			));
-		}).pipe(function(row) {
+		return dbM .pipe(function(db) {
+			return fillIngredients(food)
+				.pipe(function(ings) {
+					return nodam.result(
+						_.reduce(ings, function(ing, memo) {
+							return ing.cals * ing.grams;
+						}, 0) / food.grams
+					)})
+				.then(db.get(
+					'SELECT cals FROM foods' + orm.condition({ id: food.id })
+				));
+		}) .pipe(function(row) {
 			return nodam.result(_.set(food, 'cals', row.cals));
 		});
 	} else {
@@ -323,36 +284,77 @@ function updateFoodCals(food) {
 	}
 }
 
+function ingredientsForFoodM(food) {
+	return dbM .pipe(_.method('all', [
+		queries.ingredients_with_foods +
+			orm.condition({ food_id: food.id }) +
+			' ORDER BY i.grams DESC'
+	]));
+}
+
+function ingredientsM(db, food) {
+	if (food.type === 'ingredient') {
+		return nodam.result(food);
+	} else {
+		return db.all(
+			queries.ingredients_with_foods + orm.condition({ food_id: food.id })
+		) .mmap(
+			_.curry(fmap, hydrateIngredient)
+		) .pipe(function (ingredients) {
+			var $food = _.set(food, 'ingredients', ingredients);
+
+			if (food.grams) {
+				$food.cals = ingredients.reduce(function(sum, i) {
+					return sum + i.food.cals * i.grams;
+				}, 0) / food.grams;
+			}
+
+			return nodam.result($food);
+		});
+	}
+}
+
+function allFoodsM(db) {
+	return db
+		.all(queries.foods)
+		.pipe(function(foods) {
+			return nodam.sequence(
+				_.fmap(_.curry(ingredientsM, db), foods)
+				);
+		});
+}
+
+/*
+function ingredients
+	return foodByName(db, food_name) .pipe(function(food) {
+		var m;
+
+		if (! food) {
+			return error404;
+		} else {
+			if (food.type === 'dish') {
+				m = ingredientsForFoodM(food) .pipe(function(ingredients) {
+					return getJade('views/ingredients.jade', {
+						ingredients: ingredients, food: food, food_url: foodUrl(food)
+					});
+				});
+			} else {
+				m = nodam.result(food_name + ' has no ingredients.')
+			}
+
+			return m.pipe(success);
+		}
+	});
+	*/
+
 var actions = {
 	root: function(match) {
-		return dbM .pipe(function(db) {
-			return db.all(queries.foods).pipe(function(foods) {
-				var ms = _.map(foods, function(food) {
-					if (food.type === 'ingredient') {
-						return nodam.result(food);
-					} else {
-						return db.all(
-							queries.ingredients_with_foods + orm.condition({ food_id: food.id })
-						) .mmap(
-							_.curry(fmap, hydrateIngredient)
-						) .pipe(function (ingredients) {
-								var ffood = _.set(food, 'ingredients', ingredients);
-								if (food.grams) {
-									ffood.cals = ingredients.reduce(function(sum, i) {
-										return sum + i.food.cals * i.grams;
-									}, 0) / food.grams;
-								}
-
-								return nodam.result(ffood);
-							});
-					}
-				});
-
-				return nodam.sequence(ms);
-			});
-		}).pipe(function(rows) {
-			return getJade('views/foods.jade', { foods: rows, help: helper });
-		}).pipe(success);
+		return dbM
+			.pipe(allFoodsM)
+			.pipe(function(rows) {
+				return getJade('views/foods.jade', { foods: rows, help: helper });
+			})
+			.pipe(success);
 	},
 
 	food: function(match) {
@@ -393,9 +395,7 @@ var actions = {
 					return error404;
 				} else {
 					if (food.type === 'dish') {
-						m = db.all(
-							queries.ingredients_with_foods + orm.condition({ food_id: food.id }) + ' ORDER BY i.grams DESC'
-						).pipe(function(ingredients) {
+						m = ingredientsForFoodM(food) .pipe(function(ingredients) {
 							return getJade('views/ingredients.jade', {
 								ingredients: ingredients, food: food, food_url: foodUrl(food)
 							});
@@ -425,7 +425,7 @@ var actions = {
 				} else if (post.delete) {
 					m = db.run(
 						'DELETE FROM ingredients ' +
-						orm.condition({ food_id: post.food_id, ingredient_id: post.delete })
+						orm.condition({ food_id: food.id, ingredient_id: post.delete })
 					);
 				} else if (post.create) {
 					m = foodByName(db, post.ing_name) .pipe(function(ingred) {
@@ -558,8 +558,12 @@ var routes = [
 ];
 
 nodam.http().createServer(function(request, response) {
-	routeRequest(request, routes).or(error404).run(_.inert, function(err) {
-		console.log(err);
+	var e = new Error();
+	nodam.debug(true);
+
+	routeRequest(request, routes).or(error404).run(function(u) {
+	}, function(err) {
+		showMonadErr(err);
 
 		response.write('There was a problem with your request.');
 		response.end();
