@@ -12,7 +12,8 @@ html
 				th 
 			each m_food in meal_foods
 				tr
-					td #{m_food.food.name}
+					td
+						a(href="#{help.foodUrl(m_food.food)}") #{m_food.food.name}
 					td #{m_food.grams}
 					td #{m_food.grams * m_food.food.cals / 100}
 					td 

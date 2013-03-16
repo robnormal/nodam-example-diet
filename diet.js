@@ -1,3 +1,5 @@
+Error.stackTraceLimit = Infinity;
+
 var
 	_      = require('../nodam/lib/curry.js'),
 	orm    = require('./lib/orm.js'),
@@ -50,11 +52,19 @@ getPost = nodam.get('request') .pipe(function(req) {
 			}
 		});
 
+		return new nodam.AsyncMonad(function(r, f, s) {
+			req.on('end', function() {
+				r(qs.parse(postData), s);
+			});
+		});
+	
+		/*
 		return onM(req, 'end').pipe(function () {
 			// must call in here, after data has been constructed
 			// ## DON'T change this to a then() ##
 			return nodam.result(qs.parse(postData));
 		});
+		*/
 	} else {
 		return nodam.result([]);
 	}
@@ -73,7 +83,8 @@ dbM = nodam.get('db')
 			return nodam.result(db);
 		} else {
 			return sql.database('diet.db').pipe(function(db_open) {
-				return db_open.serialize().set('db', db_open);
+				// return db_open.serialize().set('db', db_open);
+				return nodam.set('db', db_open);
 			});
 		}
 	});
@@ -208,7 +219,11 @@ var queries = {
 		'f.id, f.name, f.type, f.cals, f.grams AS food_grams FROM meal_foods mf ' +
 		'JOIN foods f ON mf.food_id=f.id',
 	meal_foods_update: 'UPDATE meal_foods SET grams=<%= grams %> ' +
-		'WHERE meal_id=<%= meal_id %> AND food_id=<%= food_id %>'
+		'WHERE meal_id=<%= meal_id %> AND food_id=<%= food_id %>',
+	food_update_cals: 'UPDATE foods JOIN ingredients i ON foods.id=i.food_id ' +
+		'JOIN foods fi On i.food_id=fi.id ' +
+		"SET foods.cals=SUM(fi.cals) WHERE i.food_id=foods.id AND fi.id=i.food_id " +
+		"AND foods.type='dish' AND foods.id=<%= id %>"
 };
 
 function getFood(db, id) {
@@ -271,6 +286,41 @@ function requireQuery(template, data) {
 	requireString(q, 'bad query template: ' + template);
 
 	return q;
+}
+
+function fillIngredients(food) {
+	if (food.type !== 'dish' || food.ingredients) {
+		return nodam.result(food);
+	} else {
+		return dbM.pipe(function(db) {
+			return db.all(
+				'SELECT f.*, i.grams AS iGrams FROM foods f JOIN ingredients i ON i.ingredient_id=f.id' +
+					orm.condition({ 'i.food_id': food.id })
+			) .pipe(function (ings) {
+				return nodam.result(_.set(food, 'ingredients', ings));
+			});
+		});
+	}
+}
+
+function updateFoodCals(food) {
+	if (food.type === 'dish') {
+		return dbM.pipe(function(db) {
+			return fillIngredients(food) .pipe(function(ings) {
+				return nodam.result(
+					_.reduce(ings, function(ing, memo) {
+						return ing.cals * ing.iGrams;
+					}, 0)
+				);
+			}).then(db.get(
+				'SELECT cals FROM foods' + orm.condition({ id: food.id })
+			));
+		}).pipe(function(row) {
+			return nodam.result(_.set(food, 'cals', row.cals));
+		});
+	} else {
+		return nodam.result(food);
+	}
 }
 
 var actions = {
@@ -368,7 +418,7 @@ var actions = {
 			return foodByName(db, food_name) .pipe(function(food) {
 				var m;
 
-				if (!food) {
+				if (! food) {
 					return error403('No such food: ' + food_name);
 				} else if ('dish' !== food.type) {
 					return error403(food_name + ' cannot have ingredients.');
@@ -379,11 +429,11 @@ var actions = {
 					);
 				} else if (post.create) {
 					m = foodByName(db, post.ing_name) .pipe(function(ingred) {
-						if (!ingred) return  nodam.result();
+						if (!ingred || !ingred.id) return  nodam.result();
 
 						return db.run(_.template(
 							"INSERT INTO ingredients (food_id, ingredient_id, grams) VALUES (" + food.id + ", " +
-							ingred.id + ", '<%= grams %>')", post))
+							ingred.id + ", <%= grams || 0 %>)", post))
 					});
 				} else if (post.update) {
 					m = db.run(_.template(
@@ -393,7 +443,9 @@ var actions = {
 				}
 
 				if (m) {
-					return m.then(redirect(match[0]));
+					return m
+						.then(updateFoodCals(food))
+						.then(redirect(match[0]));
 				} else {
 					return error403('Invalid form submission.');
 				}
@@ -507,10 +559,9 @@ var routes = [
 
 nodam.http().createServer(function(request, response) {
 	routeRequest(request, routes).or(error404).run(_.inert, function(err) {
-			console.log(err);
+		console.log(err);
 
-			response.write('There was a problem with your request.');
-			response.end();
-		}, { request: request, response: response }
-	);
+		response.write('There was a problem with your request.');
+		response.end();
+	}, { request: request, response: response });
 }).listen(1337, '127.0.0.1');
