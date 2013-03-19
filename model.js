@@ -6,6 +6,7 @@ var
   M      = nodam.Maybe;
 
 var fmap = _.flip(_.map);
+function toInt(x) { return parseInt(x, 10) }
 
 var dbM = nodam.get('db')
 	.pipe(function(db) {
@@ -17,6 +18,28 @@ var dbM = nodam.get('db')
 			});
 		}
 	});
+
+// make code a little cleaner
+function runQuery(tmpl, data) {
+  return dbM.pipe(function(db) {
+    return db.run(_.template(tmpl, data))
+	})
+}
+
+function dbFunction(name) {
+	return function() {
+		var args = arguments
+		return dbM.pipe(function(db_obj) {
+			return db_obj[name].apply(db_obj, args);
+		});
+	};
+}
+
+
+var
+	dbGet = dbFunction('get'),
+	dbAll = dbFunction('all'),
+	dbRun = dbFunction('run');
 
 var queries = {
 	foods:
@@ -44,6 +67,8 @@ var queries = {
 		'SELECT * FROM meals',
 	meals_insert:
 		"INSERT INTO meals (created_at) VALUES (datetime('now'))",
+	meal_foods:
+		'SELECT * from meal_foods',
 	meal_foods_with_foods:
 		'SELECT mf.meal_id, mf.food_id, mf.grams, ' +
 		'f.id, f.name, f.type, f.cals, f.grams AS food_grams FROM meal_foods mf ' +
@@ -58,57 +83,79 @@ var queries = {
 		"UPDATE foods SET cals='<%= cals %>' WHERE id=<%= id %>"
 };
 
-function getFood(db, id) {
-	return db.get(queries.foods + orm.condition({id: id}));
-}
-
-function foodByName(name) {
-	var query = queries.foods + orm.condition({name: name});
-
-	return dbM.pipe(function(db) {
-		return db.get(query);
-	});
-}
-
-function getMeal(db, id) {
-	return db.get(queries.meals + orm.condition({id: id}));
-}
-
-function hydrateIngredient(row) {
-	return {
-		food_id: row.food_id,
-		ingredient_id: row.ingredient_id,
-		grams: row.grams,
-		food: {
-			id: row.id,
-			name: row.name,
-			type: row.type,
-			cals: row.cals,
-			grams: row.food_grams
-		}
-	};
-}
-
 function setMealFoodCals(m_food) {
   var cals = m_food.grams * m_food.food.cals / 100;
   return _.set(m_food, 'cals', cals);
 }
 
+function hydrateFood(row) {
+	return {
+		id: toInt(row.id),
+		name: row.name,
+		type: row.type,
+		cals: parseFloat(row.cals),
+		grams: toInt(row.food_grams)
+	}
+}
+
+function hydrateMeal(row) {
+	return { id: toInt(row.id), created_at: row.created_at };
+}
+
+function hydrateIngredient(row) {
+	return {
+		id: toInt(row.id),
+		name: row.name,
+		type: row.type,
+		cals: parseFloat(row.cals),
+		food_grams: toInt(row.food_grams),
+		food_id: toInt(row.food_id),
+		ingredient_id: toInt(row.ingredient_id),
+		grams: toInt(row.grams)
+	};
+}
+
 function hydrateMealFood(row) {
   var m_food = {
-		meal_id: row.meal_id,
-		food_id: row.food_id,
-		grams: row.grams,
+		meal_id: toInt(row.meal_id),
+		food_id: toInt(row.food_id),
+		grams: toInt(row.grams),
 		food: {
-			id: row.id,
+			id: toInt(row.id),
 			name: row.name,
 			type: row.type,
-			cals: row.cals,
-			grams: row.food_grams
+			cals: parseFloat(row.cals),
+			grams: toInt(row.food_grams)
 		}
 	};
 
   return setMealFoodCals(m_food);
+}
+
+function getFood(id) {
+	return dbGet(queries.foods + orm.condition({id: id})).mmap(hydrateFood);
+}
+
+function getMeal(id) {
+	return dbGet(queries.meals + orm.condition({id: id})).mmap(hydrateMeal);
+}
+
+function getMealFood(meal_id, food_id) {
+	return dbGet(
+		queries.meal_foods +
+		orm.condition({meal_id: meal_id, food_id: food_id})
+	) .mmap(function(row) {
+		return {
+			meal_id: toInt(row.meal_id),
+			food_id: toInt(row.food_id),
+			grams:   toInt(row.grams)
+		};
+	});
+}
+
+function foodByName(name) {
+	var query = queries.foods + orm.condition({name: name});
+	return dbGet(query);
 }
 
 function requireString(str, err) {
@@ -129,13 +176,10 @@ function fillIngredients(food) {
 	if (food.type !== 'dish' || food.ingredients) {
 		return nodam.result(food);
 	} else {
-		return dbM.pipe(function(db) {
-			return db
-				.all(queries.ingredients_with_foods +
-					orm.condition({ 'i.food_id': food.id }))
-				.pipe(function (ings) {
-					return nodam.result(_.set(food, 'ingredients', ings));
-				});
+		return dbAll(
+			queries.ingredients_with_foods + orm.condition({ 'i.food_id': food.id })
+		) .pipe(function (ings) {
+			return nodam.result(_.set(food, 'ingredients', ings));
 		});
 	}
 }
@@ -150,43 +194,31 @@ function calsFromIngredients(food) {
 }
 
 function updateFoodCals(food) {
-	if (food.type === 'dish') {
-		console.log(food);
-
+	if (food.type !== 'dish') {
+		return nodam.result(food);
+	} else {
 		return fillIngredients(food)
 			.mmap(calsFromIngredients)
 			.pipe(function(cals) {
-				return dbM.pipe(function(db) {
-					var q = _.template(
-						queries.food_update_cals,
-						{ cals: cals, id: food.id }
-					);
-
-					return db.run(q);
-
-				// pass the food with the new calorie count
-				}).then(nodam.result(
+				return dbRun(_.template(
+					queries.food_update_cals,
+					{ cals: cals, id: food.id }
+				)) .then(nodam.result(
+					// pass the food with the new calorie count
 					_.set(food, 'cals', cals)
 				));
 			});
-	} else {
-		return nodam.result(food);
 	}
 }
 
-function ingredientsForFoodM(food) {
-	var q = queries.ingredients_with_foods +
-		orm.condition({ food_id: food.id }) + ' ORDER BY i.grams DESC';
-
-	return dbM .pipe(_.method('all', [q]));
-}
-
-function ingredientsM(db, food) {
+function ingredientsForFood(food) {
 	if (food.type === 'ingredient') {
 		return nodam.result(food);
 	} else {
-		return db.all(
-			queries.ingredients_with_foods + orm.condition({ food_id: food.id })
+		return dbAll(
+			queries.ingredients_with_foods +
+				orm.condition({ food_id: food.id }) +
+				' ORDER BY i.grams DESC'
 		) .mmap(
 			_.curry(fmap, hydrateIngredient)
 		) .pipe(function (ingredients) {
@@ -197,15 +229,12 @@ function ingredientsM(db, food) {
 	}
 }
 
-function allFoodsM(db) {
-	return db
-		.all(queries.foods)
-		.pipe(function(foods) {
-			return nodam.sequence(
-				_.fmap(_.curry(ingredientsM, db), foods)
-				);
-		});
-}
+var allFoods = dbAll(queries.foods)
+	.pipe(function(foods) {
+		return nodam.sequence(
+			_.fmap(ingredientsForFood, foods)
+		)
+	});
 
 module.exports = {
   dbM:                 dbM,
@@ -213,11 +242,11 @@ module.exports = {
   getFood:             getFood,
   foodByName:          foodByName,
   getMeal:             getMeal,
+  getMealFood:         getMealFood,
   hydrateIngredient:   hydrateIngredient,
   hydrateMealFood:     hydrateMealFood,
   fillIngredients:     fillIngredients,
   updateFoodCals:      updateFoodCals,
-  ingredientsForFoodM: ingredientsForFoodM,
-  ingredientsM:        ingredientsM,
-  allFoodsM:           allFoodsM
+  ingredientsForFood:  ingredientsForFood,
+  allFoods:            allFoods
 };

@@ -24,7 +24,7 @@ fmap = _.flip(_.map)
 
 
 # make code a little cleaner
-runQueryM = (tmpl, data) ->
+runQuery = (tmpl, data) ->
   dbM.pipe (db) ->
     db.run _.template(tmpl, data)
 
@@ -139,38 +139,111 @@ helper =
 getView = (view, data) ->
   getJade('views/' + view + '.jade', _.set(data, 'help', helper))
 
-actions =
+showView = (view, data) -> getView(view, data).pipe success
+
+deleteFood = (post) ->
+  dbRun('DELETE FROM foods ' + orm.condition(id: post['delete']))
+
+createFood = (post) ->
+  runQuery(queries.foods_insert,
+    name: post.food_name
+    type: post.food_type
+    cals: post.food_cals || ''
+    grams: post.food_grams || ''
+  )
+
+updateFood = (post) ->
+  runQuery(queries.foods_update,
+    name: post.food_name
+    type: post.food_type
+    cals: post.food_cals || ''
+    grams: post.food_grams || ''
+    id: post.update
+  )
+
+getIngredients = (food) ->
+  m =
+    if food.type == 'dish'
+      model.ingredientsForFood(food).pipe (food2) ->
+        getView('ingredients',
+          ingredients: food2.ingredients
+          food: food2
+          food_url: foodUrl(food2)
+        )
+    else
+      nodam.result(food.name + ' has no ingredients.')
+
+deleteIngredient = (post, food) ->
+  dbRun('DELETE FROM ingredients ' + orm.condition(
+    food_id: food.id
+    ingredient_id: post['delete']
+  ))
+
+createIngredient = (post, food) ->
+  model.foodByName(post.ing_name).pipe (ingred) ->
+    unless ingred && ingred.id
+      return nodam.result()
+
+    runQuery(queries.ingredients_insert,
+      food_id: food.id
+      ingred_id: ingred.id
+      grams: post.grams || 0
+    )
+
+deleteMealFood = (meal_id, food_id) ->
+  dbRun('DELETE FROM meal_foods ' + orm.condition({
+    meal_id: meal_id
+    food_id: post_id
+  }))
+
+createMealFood = (meal, post) ->
+  model.foodByName(post.food_name).pipe (food) ->
+    if !food
+      nodam.result()
+    else
+      # if meal food exists, add the grams of the new entry to that
+      model.getMealFood(meal.id, food.id).pipe (m_food) ->
+        post_grams = parseInt(post.grams, 10)
+
+        if m_food
+          runQuery(queries.meal_foods_update,
+            meal_id: meal.id
+            food_id: food.id
+            grams: m_food.grams + post_grams
+          )
+        else
+          runQuery(queries.meal_foods_insert, {
+            meal_id: meal.id
+            food_id: food.id
+            grams: post_grams
+          })
+
+updateMealFood = (meal, post) ->
+  runQuery(queries.meal_foods_update,
+    meal_id: meal.id
+    food_id: post.update
+    grams: post.grams
+  )
+
+actions = {
   root: (match) ->
-    dbM.pipe(model.allFoodsM).pipe((rows) ->
-      getView('foods', foods: rows)
-    ).pipe success
+    model.allFoods.pipe (rows) ->
+      showView('foods', foods: rows)
 
   food: (match) ->
     changes = getPost.pipe (post) ->
       if post['delete']
-        dbRun 'DELETE FROM foods ' + orm.condition(id: post['delete'])
+        deleteFood post
       else if post.create
-        runQueryM(queries.foods_insert,
-          name: post.food_name
-          type: post.food_type
-          cals: post.food_cals || ''
-          grams: post.food_grams || ''
-        )
-
+        createFood post
       else if post.update
-        runQueryM(queries.foods_update,
-          name: post.food_name
-          type: post.food_type
-          cals: post.food_cals || ''
-          grams: post.food_grams || ''
-          id: post.update
-        )
-
+        updateFood post
       else
         # if nothing to do, send back to main page
         nodam.result()
 
     changes.then redirect('/')
+
 
   ingredients: (match) ->
     food_name = match[1] && uriToWord(match[1])
@@ -181,18 +254,7 @@ actions =
       if !food
         error404
       else
-        m =
-          if food.type == 'dish'
-            model.ingredientsForFoodM(food).pipe (ingredients) ->
-              getView('ingredients',
-                ingredients: ingredients
-                food: food
-                food_url: foodUrl(food)
-              )
-          else
-            nodam.result(food_name + ' has no ingredients.')
-
-        m.pipe success
+        getIngredients(food).pipe success
 
 
   manageIngredients: (match) ->
@@ -204,28 +266,16 @@ actions =
       model.foodByName(food_name).pipe (food) ->
         unless food
           return error403('No such food: ' + food_name)
-
         unless 'dish' == food.type
           return error403(food_name + ' cannot have ingredients.')
 
         m =
           if post['delete']
-            dbRun('DELETE FROM ingredients ' + orm.condition(
-              food_id: food.id
-              ingredient_id: post['delete']
-            ))
+            deleteIngredient(post, food)
           else if post.create
-            model.foodByName(post.ing_name).pipe (ingred) ->
-              unless ingred && ingred.id
-                return nodam.result()
-
-              runQueryM(queries.ingredients_insert,
-                food_id: food.id
-                ingred_id: ingred.id
-                grams: post.grams || 0
-              )
+            createIngredient(post, food)
           else if post.update
-            runQueryM(queries.ingredients_update, post)
+            runQuery(queries.ingredients_update, post)
           else false
 
         if m
@@ -234,13 +284,9 @@ actions =
           error403 'Invalid form submission.'
 
 
-
   meals: (match) ->
-    dbM.pipe nodam.pipeline([
-      _.method('all', [queries.meals + ' ORDER BY created_at DESC']),
-      (meals) -> getView('meals', meals: meals),
-      success
-    ])
+    dbAll(queries.meals + ' ORDER BY created_at DESC').pipe (meals) ->
+      showView('meals', meals: meals)
 
   manageMeals: (match) ->
     nodam.combine([dbM, getPost]).pipeArray (db_obj, post) ->
@@ -273,8 +319,8 @@ actions =
           meal2 = _.set(meal, 'foods', meal_foods)
           meal3 = setMealCals(meal2)
 
-          getView('meal', { meal_foods: meal_foods, meal: meal3 })
-        ).pipe success
+          showView('meal', { meal_foods: meal_foods, meal: meal3 })
+        )
 
   mealFoods: (match) ->
     meal_id = match[1]
@@ -282,35 +328,20 @@ actions =
       return error404
 
     nodam.combine([dbM, getPost]).pipeArray (db_obj, post) ->
-      db_obj.get(queries.meals + orm.condition(id: meal_id)).pipe (meal) ->
+      dbGet(queries.meals + orm.condition(id: meal_id)).pipe (meal) ->
         unless meal
           return error403('No meal with that id: ' + meal_id)
 
         if post['delete']
-          m = db_obj.run('DELETE FROM meal_foods ' + orm.condition({
-            meal_id: meal_id
-            food_id: post['delete']
-          }))
+          m = deleteMealFood(meal_id, post['delete'])
         else if post.create
-          m = model.foodByName(post.food_name).pipe((food) ->
-            if food
-              runQueryM(queries.meal_foods_insert, {
-                meal_id: meal_id
-                food_id: food.id
-                grams: post.grams
-              })
-            else
-              nodam.result()
-          )
+          m = createMealFood(meal, post)
         else if post.update
-          m = runQueryM(queries.meal_foods_update,
-            meal_id: meal_id
-            food_id: post.update
-            grams: post.grams
-          )
+          m = updateMealFood(meal, post)
         else return error403 'Invalid form submission.'
 
         m.then redirect(match[0])
+}
 
 routes = [
   [ '/',                  { GET: actions.root }],
@@ -324,10 +355,14 @@ routes = [
 nodam.http().createServer((request, response) ->
   nodam.debug true
 
-  routeRequest(request, routes).or(error404).run(((u) ->
-  ), ((err) ->
-    showMonadErr err
-    response.write 'There was a problem with your request.'
-    response.end()
-  ), { request: request, response: response })
+  routeRequest(request, routes).or(error404)
+    .run(
+      _.inert,
+      ((err) ->
+        showMonadErr err
+        response.write 'There was a problem with your request.'
+        response.end()
+      ),
+      { request: request, response: response }
+    )
 ).listen(1337, '127.0.0.1')
