@@ -25,7 +25,8 @@ fmap = _.flip(_.map)
 
 # make code a little cleaner
 runQueryM = (tmpl, data) ->
-  dbM.pipe _.method('run', [_.template(tmpl, data)])
+  dbM.pipe (db) ->
+    db.run _.template(tmpl, data)
 
 dbFunction = (name) ->
   (args...) ->
@@ -275,33 +276,36 @@ actions =
         unless meal
           return error403('No meal with that id: ' + meal_id)
 
-        m =
-          if post['delete']
-            db_obj.run('DELETE FROM meal_foods ' + orm.condition(
-              meal_id: meal_id
-              food_id: post['delete']
-            ))
-          else if post.create
-            model.foodByName(db_obj, post.food_name).pipe((food) ->
-              if food
-                runQueryM(queries.meal_foods_insert, post)
-              else nodam.result()
-            )
-          else if post.update
-            runQueryM(queries.meal_foods_update, post)
-          else false
+        if post['delete']
+          m = db_obj.run('DELETE FROM meal_foods ' + orm.condition({
+            meal_id: meal_id
+            food_id: post['delete']
+          }))
+        else if post.create
+          m = model.foodByName(post.food_name).pipe((food) ->
+            if food
+              console.log(food)
+              runQueryM(queries.meal_foods_insert, {
+                meal_id: meal_id
+                food_id: food.id
+                grams: post.grams
+              })
+            else
+              nodam.result()
+          )
+        else if post.update
+          m = runQueryM(queries.meal_foods_update, post)
+        else return error403 'Invalid form submission.'
 
-        if m
-          m.then redirect(match[0])
-        else error403 'Invalid form submission.'
+        m.then redirect(match[0])
 
 routes = [
-	[ '/',                  { GET: actions.root }],
-	[ /\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }],
-	[ /\/food(\/?)$/,       { POST: actions.food }],
-	[ /\/meals(\/?)$/,      { GET: actions.meals }],
-	[ /\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }],
-	[ /\/meal(\/?)$/,       { POST: actions.manageMeals }]
+  [ '/',                  { GET: actions.root }],
+  [ /\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }],
+  [ /\/food(\/?)$/,       { POST: actions.food }],
+  [ /\/meals(\/?)$/,      { GET: actions.meals }],
+  [ /\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }],
+  [ /\/meal(\/?)$/,       { POST: actions.manageMeals }]
 ]
 
 nodam.http().createServer((request, response) ->

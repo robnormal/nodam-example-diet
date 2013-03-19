@@ -1,9 +1,9 @@
 var
-	_      = require('../nodam/lib/curry.js'),
-	orm    = require('./lib/orm.js'),
-	nodam  = require('../nodam/lib/nodam.js'),
-	sql    = require('../nodam/lib/sqlite.js'),
-	M      = nodam.Maybe;
+  _      = require('../nodam/lib/curry.js'),
+  orm    = require('./lib/orm.js'),
+  nodam  = require('../nodam/lib/nodam.js'),
+  sql    = require('../nodam/lib/sqlite.js'),
+  M      = nodam.Maybe;
 
 var fmap = _.flip(_.map);
 
@@ -55,10 +55,7 @@ var queries = {
 		'INSERT INTO meal_foods (meal_id, food_id, grams) ' +
 		'VALUES (<%= meal_id %>, <%= food_id %>, <%= grams %>)',
 	food_update_cals:
-		'UPDATE foods JOIN ingredients i ON foods.id=i.food_id ' +
-		'JOIN foods fi On i.food_id=fi.id ' +
-		"SET foods.cals=SUM(fi.cals) WHERE i.food_id=foods.id AND fi.id=i.food_id " +
-		"AND foods.type='dish' AND foods.id=<%= id %>"
+		"UPDATE foods SET cals='<%= cals %>' WHERE id=<%= id %>"
 };
 
 function getFood(db, id) {
@@ -69,7 +66,7 @@ function foodByName(name) {
 	var query = queries.foods + orm.condition({name: name});
 
 	return dbM.pipe(function(db) {
-		db.get(query);
+		return db.get(query);
 	});
 }
 
@@ -118,6 +115,9 @@ function requireQuery(template, data) {
 	return q;
 }
 
+/**
+ * results in the food, not the ingredients
+ */
 function fillIngredients(food) {
 	if (food.type !== 'dish' || food.ingredients) {
 		return nodam.result(food);
@@ -133,22 +133,35 @@ function fillIngredients(food) {
 	}
 }
 
+// Food -> Double
+function calsFromIngredients(food) {
+	var ings = food.ingredients;
+
+	return _.reduce(ings, function(memo, ing) {
+		return ing.cals * ing.grams;
+	}, 0) * 100 / food.grams;
+}
+
 function updateFoodCals(food) {
 	if (food.type === 'dish') {
-		return dbM .pipe(function(db) {
-			return fillIngredients(food)
-				.pipe(function(ings) {
-					return nodam.result(
-						_.reduce(ings, function(ing, memo) {
-							return ing.cals * ing.grams;
-						}, 0) / food.grams
-					)})
-				.then(db.get(
-					'SELECT cals FROM foods' + orm.condition({ id: food.id })
+		console.log(food);
+
+		return fillIngredients(food)
+			.mmap(calsFromIngredients)
+			.pipe(function(cals) {
+				return dbM.pipe(function(db) {
+					var q = _.template(
+						queries.food_update_cals,
+						{ cals: cals, id: food.id }
+					);
+
+					return db.run(q);
+
+				// pass the food with the new calorie count
+				}).then(nodam.result(
+					_.set(food, 'cals', cals)
 				));
-		}) .pipe(function(row) {
-			return nodam.result(_.set(food, 'cals', row.cals));
-		});
+			});
 	} else {
 		return nodam.result(food);
 	}
@@ -172,12 +185,6 @@ function ingredientsM(db, food) {
 		) .pipe(function (ingredients) {
 			var $food = _.set(food, 'ingredients', ingredients);
 
-			if (food.grams) {
-				$food.cals = ingredients.reduce(function(sum, i) {
-					return sum + i.food.cals * i.grams;
-				}, 0) / food.grams;
-			}
-
 			return nodam.result($food);
 		});
 	}
@@ -194,16 +201,16 @@ function allFoodsM(db) {
 }
 
 module.exports = {
-	dbM:                 dbM,
-	queries:             queries,
-	getFood:             getFood,
-	foodByName:          foodByName,
-	getMeal:             getMeal,
-	hydrateIngredient:   hydrateIngredient,
-	hydrateMealFood:     hydrateMealFood,
-	fillIngredients:     fillIngredients,
-	updateFoodCals:      updateFoodCals,
-	ingredientsForFoodM: ingredientsForFoodM,
-	ingredientsM:        ingredientsM,
-	allFoodsM:           allFoodsM
+  dbM:                 dbM,
+  queries:             queries,
+  getFood:             getFood,
+  foodByName:          foodByName,
+  getMeal:             getMeal,
+  hydrateIngredient:   hydrateIngredient,
+  hydrateMealFood:     hydrateMealFood,
+  fillIngredients:     fillIngredients,
+  updateFoodCals:      updateFoodCals,
+  ingredientsForFoodM: ingredientsForFoodM,
+  ingredientsM:        ingredientsM,
+  allFoodsM:           allFoodsM
 };
