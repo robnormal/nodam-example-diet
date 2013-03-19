@@ -80,7 +80,9 @@ var queries = {
 		'INSERT INTO meal_foods (meal_id, food_id, grams) ' +
 		'VALUES (<%= meal_id %>, <%= food_id %>, <%= grams %>)',
 	food_update_cals:
-		"UPDATE foods SET cals='<%= cals %>' WHERE id=<%= id %>"
+		"UPDATE foods SET cals='<%= cals %>' WHERE id=<%= id %>",
+	food_list:
+    "SELECT name FROM foods WHERE name LIKE '<%= term %>%'"
 };
 
 function setMealFoodCals(m_food) {

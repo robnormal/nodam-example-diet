@@ -341,15 +341,33 @@ actions = {
         else return error403 'Invalid form submission.'
 
         m.then redirect(match[0])
+  foodList: (match) ->
+    term = match[2]
+    (
+      if term
+        dbAll(_.template(
+          model.queries.food_list,
+          { term: term }
+        )).mmap (rows) ->
+          if rows
+            JSON.stringify(_.map(rows, (row) -> row.name))
+          else
+            nodam.result('')
+      else
+        nodam.result('')
+    ).pipe success
+
 }
 
 routes = [
-  [ '/',                  { GET: actions.root }],
-  [ /\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }],
-  [ /\/food(\/?)$/,       { POST: actions.food }],
-  [ /\/meals(\/?)$/,      { GET: actions.meals }],
-  [ /\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }],
+  [ '/',                  { GET: actions.root }]
+  [ /\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }]
+  [ /\/food(\/?)$/,       { POST: actions.food }]
+  [ /\/meals(\/?)$/,      { GET: actions.meals }]
+  [ /\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }]
   [ /\/meal(\/?)$/,       { POST: actions.manageMeals }]
+
+  [ /\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }]
 ]
 
 nodam.http().createServer((request, response) ->

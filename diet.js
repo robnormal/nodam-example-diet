@@ -273,26 +273,34 @@
   };
 
   createMealFood = function(meal, post) {
-    return model.foodByName(post.food_name).pipe(function(food) {}, !food ? nodam.result() : model.getMealFood(meal.id, food.id).pipe(function(m_food) {
-      if (m_food) {
-        return runQuery(queries.meal_foods_update, {
-          meal_id: meal.id,
-          food_id: post.update,
-          grams: m_food.grams + post.grams
-        });
+    return model.foodByName(post.food_name).pipe(function(food) {
+      if (!food) {
+        return nodam.result();
       } else {
-        return runQuery(queries.meal_foods_insert, {
-          meal_id: meal.id,
-          food_id: food.id,
-          grams: post.grams
+        return model.getMealFood(meal.id, food.id).pipe(function(m_food) {
+          var post_grams;
+          post_grams = parseInt(post.grams, 10);
+          if (m_food) {
+            return runQuery(queries.meal_foods_update, {
+              meal_id: meal.id,
+              food_id: food.id,
+              grams: m_food.grams + post_grams
+            });
+          } else {
+            return runQuery(queries.meal_foods_insert, {
+              meal_id: meal.id,
+              food_id: food.id,
+              grams: post_grams
+            });
+          }
         });
       }
-    }));
+    });
   };
 
   updateMealFood = function(meal, post) {
     return runQuery(queries.meal_foods_update, {
-      meal_id: meal_id,
+      meal_id: meal.id,
       food_id: post.update,
       grams: post.grams
     });
@@ -431,6 +439,22 @@
           return m.then(redirect(match[0]));
         });
       });
+    },
+    foodList: function(match) {
+      var term;
+      term = match[2];
+			console.log(term, model.food_list);
+      return (term ? dbAll(_.template(model.food_list, {
+        term: term
+      })).mmap(function(rows) {
+        if (rows) {
+          return JSON.stringify(_.map(rows, function(row) {
+            return row.name;
+          }));
+        } else {
+          return nodam.result('');
+        }
+      }) : nodam.result('')).pipe(success);
     }
   };
 
@@ -460,6 +484,10 @@
     ], [
       /\/meal(\/?)$/, {
         POST: actions.manageMeals
+      }
+    ], [
+      /\/foodlist(\/?)\?term=(\w*)/, {
+        GET: actions.foodList
       }
     ]
   ];
