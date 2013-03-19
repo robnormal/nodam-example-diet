@@ -121,6 +121,13 @@ routeRequest = (request, routes) ->
 foodUrl = (food) -> '/food/' + wordToUri(food.name)
 mealUrl = (meal) -> '/meal/' + meal.id
 
+setMealCals = (meal) ->
+  cals = _.reduce(meal.foods, (memo, m_food) ->
+    memo + m_food.cals
+  , 0)
+
+  _.set(meal, 'cals', cals)
+
 helper =
   number: (digits, num) ->
     strs = (num + '').split('.')
@@ -263,7 +270,10 @@ actions =
         ).mmap(
           _.curry(fmap, model.hydrateMealFood)
         ).pipe((meal_foods) ->
-          getView('meal', { meal_foods: meal_foods, meal: meal })
+          meal2 = _.set(meal, 'foods', meal_foods)
+          meal3 = setMealCals(meal2)
+
+          getView('meal', { meal_foods: meal_foods, meal: meal3 })
         ).pipe success
 
   mealFoods: (match) ->
@@ -284,7 +294,6 @@ actions =
         else if post.create
           m = model.foodByName(post.food_name).pipe((food) ->
             if food
-              console.log(food)
               runQueryM(queries.meal_foods_insert, {
                 meal_id: meal_id
                 food_id: food.id
@@ -294,7 +303,11 @@ actions =
               nodam.result()
           )
         else if post.update
-          m = runQueryM(queries.meal_foods_update, post)
+          m = runQueryM(queries.meal_foods_update,
+            meal_id: meal_id
+            food_id: post.update
+            grams: post.grams
+          )
         else return error403 'Invalid form submission.'
 
         m.then redirect(match[0])

@@ -89,8 +89,13 @@ function hydrateIngredient(row) {
 	};
 }
 
+function setMealFoodCals(m_food) {
+  var cals = m_food.grams * m_food.food.cals / 100;
+  return _.set(m_food, 'cals', cals);
+}
+
 function hydrateMealFood(row) {
-	return {
+  var m_food = {
 		meal_id: row.meal_id,
 		food_id: row.food_id,
 		grams: row.grams,
@@ -102,6 +107,8 @@ function hydrateMealFood(row) {
 			grams: row.food_grams
 		}
 	};
+
+  return setMealFoodCals(m_food);
 }
 
 function requireString(str, err) {

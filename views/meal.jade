@@ -11,13 +11,18 @@ html
 				th Calories
 				th 
 			each m_food in meal_foods
-				tr
-					td
-						a(href="#{help.foodUrl(m_food.food)}") #{m_food.food.name}
-					td #{m_food.grams}
-					td #{m_food.grams * m_food.food.cals / 100}
-					td 
-						form(action="#{help.mealUrl(meal)}", method="post")
+				form(action="#{help.mealUrl(meal)}", method="post")
+					tr
+						td
+							if m_food.food.type === 'dish'
+								a(href="#{help.foodUrl(m_food.food)}") #{m_food.food.name}
+							else
+								| #{m_food.food.name}
+						td 
+							input(type="text", name="grams", value="#{m_food.grams}")
+						td #{help.number(2, m_food.cals)}
+						td 
+							button(name="update", value="#{m_food.food_id}") Save
 							button(name="delete", value="#{m_food.food_id}") X
 			form(action="#{help.mealUrl(meal)}", method="post")
 				tr
@@ -27,4 +32,7 @@ html
 						input(type="text", name="grams")
 					td
 						button(name="create", value="1") Save
+
+		h3 Total calories:
+			strong #{help.number(2, meal.cals)}
 
