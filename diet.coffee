@@ -3,13 +3,14 @@ process.on "error", (err) ->
   console.log err.stack
 
 _ = require("../nodam/lib/curry.js")
-orm = require("./lib/orm.js")
 nodam = require("../nodam/lib/nodam.js")
 sql = require("../nodam/lib/sqlite.js")
+R = require('../nodam/lib/restriction.js')
+orm = require("./lib/orm.js")
+model = require("./model.js")
+
 qs = require("querystring")
 jade = require("jade")
-
-model = require("./model.js")
 
 fs = nodam.fs()
 M = nodam.Maybe
@@ -22,9 +23,11 @@ dbM = model.dbM
 queries = model.queries
 fmap = _.flip(_.map)
 
+logError = (msg) -> fs.writeFile('errors.log', msg)
 
 # make code a little cleaner
 runQuery = (tmpl, data) ->
+  R.manualCheck(tmpl && (typeof tmpl == 'string'), 'Expected query template')
   dbM.pipe (db) ->
     db.run _.template(tmpl, data)
 
@@ -33,9 +36,16 @@ dbFunction = (name) ->
     dbM.pipe (db_obj) ->
       db_obj[name](args...)
 
-dbGet = dbFunction('get')
-dbAll = dbFunction('all')
-dbRun = dbFunction('run')
+dbQueryFunction = (name) ->
+  (query, args...) ->
+    R.manualCheck(query && (typeof query == 'string'), 'Expected SQL query')
+
+    dbM.pipe (db_obj) ->
+      db_obj[name](query, args...)
+
+dbGet = dbQueryFunction('get')
+dbAll = dbQueryFunction('all')
+dbRun = dbQueryFunction('run')
 
 showMonadErr = (err) ->
   console.log err.message
@@ -114,12 +124,14 @@ routeRequest = (request, routes) ->
     match = matchUrl(routes[i][0], url)
     if match
       action = routes[i][1] && routes[i][1][method]
-      return M.just(action(match))  if action
+      if action
+        return M.just(action(match))
     i++
   M.nothing
 
 foodUrl = (food) -> '/food/' + wordToUri(food.name)
 mealUrl = (meal) -> '/meal/' + meal.id
+planUrl = (plan) -> '/plan/' + wordToUri(plan.name)
 
 setMealCals = (meal) ->
   cals = _.reduce(meal.foods, (memo, m_food) ->
@@ -135,6 +147,7 @@ helper =
 
   foodUrl: foodUrl
   mealUrl: mealUrl
+  planUrl: planUrl
 
 getView = (view, data) ->
   getJade('views/' + view + '.jade', _.set(data, 'help', helper))
@@ -332,15 +345,20 @@ actions = {
         unless meal
           return error403('No meal with that id: ' + meal_id)
 
-        if post['delete']
-          m = deleteMealFood(meal_id, post['delete'])
-        else if post.create
-          m = createMealFood(meal, post)
-        else if post.update
-          m = updateMealFood(meal, post)
-        else return error403 'Invalid form submission.'
+        e_m =
+          if post['delete']
+            M.right deleteMealFood(meal_id, post['delete'])
+          else if post.create
+            M.right createMealFood(meal, post)
+          else if post.update
+            M.right updateMealFood(meal, post)
+          else M.left 'Invalid form submission.'
 
-        m.then redirect(match[0])
+        e_m.fromEither(
+          (m) -> m.then redirect(match[0])
+          (str) -> error403 str
+        )
+
   foodList: (match) ->
     term = match[2]
     (
@@ -357,17 +375,82 @@ actions = {
         nodam.result('')
     ).pipe success
 
+  plans: (match) ->
+    dbAll(queries.plans).pipe (plans) ->
+      showView('plans', plans: plans)
+
+  planMeals: (match) ->
+    nodam.result('Yay!').pipe success
+
+  createPlan: (match) ->
+    nodam.combine([dbM, getPost]).pipeArray (db_obj, post) ->
+      e_m =
+        if post.create
+          createPlan(post)
+        else M.left('Invalid form submission.')
+
+      e_m.either(
+        (m) -> m.pipe(_.compose(redirect, planUrl))
+        (err) -> error403 err
+      )
+
+  managePlan: (match) ->
+    nodam.combine([dbM, getPost]).pipeArray (db_obj, post) ->
+      m =
+        if post.create
+          createPlan(post)
+        else
+          dbGet(queries.plans + orm.condition(id: plan_id)).pipe (plan) ->
+            if !plan
+              nodam.result M.left('No plan with that id: ' + plan_id)
+            else if post['delete']
+              deletePlan(plan)
+            else if post.update
+              updatePlan(plan, post)
+            else nodam.result M.left('Invalid form submission.')
+
+      m.pipe (e_m_err) ->
+        e_m_err.either(
+          (m) -> m.then redirect(match[0])
+          (err) -> error403 err
+        )
+
 }
+
+createPlan = (post) ->
+  if post.name
+    m = runQuery(model.queries.plans_insert, { name: post.name })
+      .then(
+        dbGet(queries.plans + orm.condition(
+          id: orm.literal('last_insert_rowid()')
+        ))
+      # ).rescue _.identity
+      ).rescue (err) ->
+        ###
+        # this is what should be done - log in its own thread, since
+        # we don't need the result
+        # logError(err).run()
+        # nodam.result('There was a problem with your plan.'
+        ###
+        logError(err).then(
+          nodam.result 'There was a problem with your plan.'
+        )
+
+  else
+    nodam.result M.left('Invalid form submission.')
 
 routes = [
   [ '/',                  { GET: actions.root }]
-  [ /\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }]
-  [ /\/food(\/?)$/,       { POST: actions.food }]
-  [ /\/meals(\/?)$/,      { GET: actions.meals }]
-  [ /\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }]
-  [ /\/meal(\/?)$/,       { POST: actions.manageMeals }]
+  [ /^\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }]
+  [ /^\/food(\/?)$/,       { POST: actions.food }]
+  [ /^\/meals(\/?)$/,      { GET: actions.meals }]
+  [ /^\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }]
+  [ /^\/meal(\/?)$/,       { POST: actions.manageMeals }]
+  [ /^\/plans(\/?)$/,       { GET: actions.plans }]
+  [ /^\/plan(\/?)$/,       { POST: actions.managePlan }]
+  [ /^\/plan\/([\w\+-]+)/, { GET: actions.planMeals, POST: actions.managePlan }]
 
-  [ /\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }]
+  [ /^\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }]
 ]
 
 nodam.http().createServer((request, response) ->

@@ -82,7 +82,11 @@ var queries = {
 	food_update_cals:
 		"UPDATE foods SET cals='<%= cals %>' WHERE id=<%= id %>",
 	food_list:
-    "SELECT name FROM foods WHERE name LIKE '<%= term %>%'"
+    "SELECT name FROM foods WHERE name LIKE '<%= term %>%'",
+	plans:
+		'SELECT * from plans',
+	plans_insert:
+		"INSERT INTO plans (name) VALUES ('<%= name %>')"
 };
 
 function setMealFoodCals(m_food) {

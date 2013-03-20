@@ -1,6 +1,6 @@
 var queries = [
 	'CREATE TABLE IF NOT EXISTS foods (' + 
-		'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, ' +
+		'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, ' +
 		'type TEXT NOT NULL, cals REAL NOT NULL)',
 	'CREATE TABLE IF NOT EXISTS ingredients (' + 
 		'food_id INTEGER NOT NULL, ingredient_id INTEGER NOT NULL, grams INTEGER, ' +
@@ -9,7 +9,11 @@ var queries = [
 		'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)',
 	'CREATE TABLE IF NOT EXISTS meal_foods (' + 
 		'meal_id INTEGER NOT NULL, food_id INTEGER NOT NULL, grams INTEGER, ' +
-		'PRIMARY KEY (meal_id, food_id))'
+		'PRIMARY KEY (meal_id, food_id))',
+	'CREATE TABLE IF NOT EXISTS plans (' + 
+		'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)',
+	'CREATE TABLE IF NOT EXISTS plan_meals (' + 
+		'plan_id INTEGER NOT NULL, meal_id INTEGER NOT NULL)'
 ];
 
 var
