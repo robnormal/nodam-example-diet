@@ -482,7 +482,28 @@
       });
     },
     planMeals: function(match) {
-      return nodam.result('Yay!').pipe(success);
+      return dbGet(queries.plans + orm.condition({
+        name: match[1]
+      })).pipe(function(plan) {
+        var q;
+        if (!plan) {
+          error403('No plan with that name exists');
+        }
+        q = queries.plan_meals + orm.condition({
+          plan_id: plan.id
+        });
+        return dbEach(q, function(meal) {
+          return dbAll(queries.meal_foods + orm.condition({
+            meal_id: meal.id
+          })).mmap(function(foods) {
+            return _.set(meal, 'foods', foods);
+          });
+        }).pipe(function(meals) {
+          return showView('plan', {
+            plan: _.set(plan, 'meals', meals)
+          });
+        });
+      });
     },
     createPlan: function(match) {
       return nodam.combine([dbM, getPost]).pipeArray(function(db_obj, post) {
@@ -523,21 +544,12 @@
   };
 
   createPlan = function(post) {
-    var m;
     if (post.name) {
-      return m = runQuery(model.queries.plans_insert, {
+      return M.right(runQuery(model.queries.plans_insert, {
         name: post.name
       }).then(dbGet(queries.plans + orm.condition({
         id: orm.literal('last_insert_rowid()')
-      }))).rescue(function(err) {
-        /*
-        # this is what should be done - log in its own thread, since
-        # we don't need the result
-        # logError(err).run()
-        # nodam.result('There was a problem with your plan.'
-        */
-        return logError(err).then(nodam.result('There was a problem with your plan.'));
-      });
+      }))));
     } else {
       return nodam.result(M.left('Invalid form submission.'));
     }

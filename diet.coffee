@@ -46,6 +46,7 @@ dbQueryFunction = (name) ->
 dbGet = dbQueryFunction('get')
 dbAll = dbQueryFunction('all')
 dbRun = dbQueryFunction('run')
+dbEach = dbQueryFunction('eachM')
 
 showMonadErr = (err) ->
   console.log err.message
@@ -209,6 +210,16 @@ deleteMealFood = (meal_id, food_id) ->
     food_id: post_id
   }))
 
+# meal -> IO meal
+fillMealFoods = (meal) ->
+  dbAll(
+    queries.meal_foods_with_foods + orm.condition(meal_id: meal.id)
+  ).mmap(
+    _.curry(fmap, model.hydrateMealFood)
+  ).pipe (meal_foods) ->
+    meal2 = _.set(meal, 'foods', meal_foods)
+    nodam.result setMealCals(meal2)
+
 createMealFood = (meal, post) ->
   model.foodByName(post.food_name).pipe (food) ->
     if !food
@@ -324,16 +335,8 @@ actions = {
       if !meal
         error404
       else
-        dbAll(
-          queries.meal_foods_with_foods + orm.condition(meal_id: meal.id)
-        ).mmap(
-          _.curry(fmap, model.hydrateMealFood)
-        ).pipe((meal_foods) ->
-          meal2 = _.set(meal, 'foods', meal_foods)
-          meal3 = setMealCals(meal2)
-
-          showView('meal', { meal_foods: meal_foods, meal: meal3 })
-        )
+        fillMealFoods(meal).pipe (mealFilled) ->
+          showView('meal', { meal_foods: mealFilled.foods, meal: mealFilled })
 
   mealFoods: (match) ->
     meal_id = match[1]
@@ -380,7 +383,22 @@ actions = {
       showView('plans', plans: plans)
 
   planMeals: (match) ->
-    nodam.result('Yay!').pipe success
+    plan_name = match[1] && uriToWord(match[1])
+
+    dbGet(queries.plans + orm.condition(name: plan_name)).pipe (plan) ->
+      unless plan
+        return error403('No plan "' + plan_name + '" exists.')
+
+      dbAll(queries.plan_meals + orm.condition(plan_id: plan.id))
+        .pipe((meals) ->
+          if meals && meals.length
+            nodam.sequence _.map(meals, fillMealFoods)
+          else
+            nodam.result []
+        )
+        .pipe (mealsFilled) ->
+          showView('plan', plan: _.set(plan, 'meals', mealsFilled))
+
 
   createPlan: (match) ->
     nodam.combine([dbM, getPost]).pipeArray (db_obj, post) ->
@@ -419,23 +437,12 @@ actions = {
 
 createPlan = (post) ->
   if post.name
-    m = runQuery(model.queries.plans_insert, { name: post.name })
+    M.right runQuery(model.queries.plans_insert, { name: post.name })
       .then(
         dbGet(queries.plans + orm.condition(
           id: orm.literal('last_insert_rowid()')
         ))
-      # ).rescue _.identity
-      ).rescue (err) ->
-        ###
-        # this is what should be done - log in its own thread, since
-        # we don't need the result
-        # logError(err).run()
-        # nodam.result('There was a problem with your plan.'
-        ###
-        logError(err).then(
-          nodam.result 'There was a problem with your plan.'
-        )
-
+      )
   else
     nodam.result M.left('Invalid form submission.')
 

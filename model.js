@@ -86,7 +86,9 @@ var queries = {
 	plans:
 		'SELECT * from plans',
 	plans_insert:
-		"INSERT INTO plans (name) VALUES ('<%= name %>')"
+		"INSERT INTO plans (name) VALUES ('<%= name %>')",
+	plan_meals:
+		'SELECT * FROM plan_meals'
 };
 
 function setMealFoodCals(m_food) {
