@@ -2,6 +2,18 @@ doctype 5
 html
 	head
 		title Foods in #{meal.name}
+		script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
+		script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
+		link(rel="stylesheet", href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css")
+
+		script
+			jQuery(function($) {
+				$('#food_name').autocomplete({
+					source: '/foodlist',
+					minLength: 1
+				});
+			});
+
 	body
 		h1 Foods in #{meal.name}
 
@@ -32,7 +44,7 @@ html
 			form(action="#{help.mealUrl(meal)}", method="post")
 				tr
 					td
-						input(type="text", name="food_name")
+						input(type="text", name="food_name", id="food_name")
 					td
 						input(type="text", name="grams")
 					td

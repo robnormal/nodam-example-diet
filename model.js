@@ -3,26 +3,37 @@ var
   orm    = require('./lib/orm.js'),
   nodam  = require('../nodam/lib/nodam.js'),
   sql    = require('../nodam/lib/sqlite.js'),
+	R      = require('../nodam/lib/restriction.js'),
   M      = nodam.Maybe;
 
+var __slice = [].slice;
 var fmap = _.flip(_.map);
+
 function toInt(x) { return parseInt(x, 10) }
 
-var dbM = nodam.get('db')
-	.pipe(function(db) {
-		if (db) {
-			return nodam.result(db);
-		} else {
-			return sql.database('diet.db').pipe(function(db_open) {
-				return nodam.set('db', db_open);
-			});
-		}
-	});
+function getDB(file) {
+	return nodam.get('db')
+		.pipe(function(db) {
+			if (db) {
+				return nodam.result(db);
+			} else {
+				return sql.database(file).pipe(function(db_open) {
+					return nodam.set('db', db_open);
+				});
+			}
+		});
+}
+
+
+// The master database monad object
+var dbM = getDB('diet.db');
+
 
 // make code a little cleaner
 function runQuery(tmpl, data) {
-  return dbM.pipe(function(db) {
-    return db.run(_.template(tmpl, data))
+  R.manualCheck(tmpl && (typeof tmpl === 'string'), 'Expected query template')
+  return dbM.pipe(function(db_obj) {
+    return db_obj.run(_.template(tmpl, data))
 	})
 }
 
@@ -35,11 +46,22 @@ function dbFunction(name) {
 	};
 }
 
+function dbQueryFunction(name) {
+	return function(query /* , args... */) {
+		R.manualCheck(query && (typeof query === 'string'), 'Expected SQL query');
+
+		var args = __slice.call(arguments, 1);
+		return dbM.pipe(function(db_obj) {
+			return db_obj[name].apply(db_obj, [query].concat(args));
+		});
+	};
+}
 
 var
-	dbGet = dbFunction('get'),
-	dbAll = dbFunction('all'),
-	dbRun = dbFunction('run');
+	dbGet = dbQueryFunction('get'),
+	dbAll = dbQueryFunction('all'),
+	dbRun = dbQueryFunction('run'),
+	dbEach = dbQueryFunction('eachM');
 
 var queries = {
 	foods:
@@ -277,6 +299,71 @@ var allFoods = dbAll(queries.foods + ' ORDER BY name')
 		)
 	});
 
+function setMealCals(meal) {
+	var cals = _.reduce(meal.foods, function(memo, m_food) {
+		return memo + m_food.cals;
+	}, 0);
+	return _.set(meal, 'cals', cals);
+}
+
+function setPlanCals(plan) {
+	var cals = _.reduce(plan.p_meals, function(memo, p_meal) {
+		return memo + p_meal.meal.cals;
+	}, 0);
+	return _.set(plan, 'cals', cals);
+}
+
+var allMeals = dbAll(queries.meals + ' ORDER BY created_at DESC');
+
+function getPlanMeals(plan) {
+	return dbAll(queries.plan_meals_with_meals + orm.condition({
+		plan_id: plan.id
+	})).mmap(function(rows) {
+		return _.map(rows, function(row) {
+			return {
+				id: parseInt(row.id, 10),
+				plan_id: parseInt(row.plan_id, 10),
+				meal: {
+					id: row.meal_id,
+					name: row.name
+				}
+			};
+		});
+	});
+}
+
+function deleteFood(id) {
+  return dbRun('DELETE FROM foods ' + orm.condition({ id: id }));
+}
+
+function fillMealFoods(meal) {
+	return dbAll(queries.meal_foods_with_foods + orm.condition({
+		meal_id: meal.id
+	})).mmap(function(rows) {
+		return _.fmap(hydrateMealFood, rows);
+	}).pipe(function(meal_foods) {
+		var meal2 = _.set(meal, 'foods', meal_foods);
+		return nodam.result(setMealCals(meal2));
+	});
+}
+
+function deleteMealFood(meal, food_id) {
+	return M.right(dbRun('DELETE FROM meal_foods ' + orm.condition({
+		meal_id: meal.id,
+		food_id: food_id
+	})));
+}
+
+function updateMealName(meal, name) {
+	return M.right(dbRun(
+		"UPDATE meals SET name='" + name + "' WHERE id=" + meal.id
+	));
+}
+
+function mealById(id) {
+	return dbGet(queries.meals + orm.condition({ id: id }));
+}
+
 module.exports = {
   dbM:                 dbM,
   queries:             queries,
@@ -295,5 +382,19 @@ module.exports = {
   fillIngredients:     fillIngredients,
   updateFoodCals:      updateFoodCals,
   ingredientsForFood:  ingredientsForFood,
-  allFoods:            allFoods
+  allFoods:            allFoods,
+
+	runQuery: runQuery,
+	dbGet: dbGet,
+	dbAll: dbAll,
+	dbRun: dbRun,
+	dbEach: dbEach,
+
+	setMealCals: setMealCals,
+	setPlanCals: setPlanCals,
+	getPlanMeals: getPlanMeals,
+	deleteFood: deleteFood,
+	fillMealFoods: fillMealFoods,
+	deleteMealFood: deleteMealFood,
+	mealById: mealById
 };
