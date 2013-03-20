@@ -155,6 +155,8 @@ getView = (view, data) ->
 
 showView = (view, data) -> getView(view, data).pipe success
 
+
+
 deleteFood = (post) ->
   dbRun('DELETE FROM foods ' + orm.condition(id: post['delete']))
 
@@ -212,6 +214,8 @@ deleteMealFood = (meal_id, food_id) ->
 
 # meal -> IO meal
 fillMealFoods = (meal) ->
+  console.log(meal)
+
   dbAll(
     queries.meal_foods_with_foods + orm.condition(meal_id: meal.id)
   ).mmap(
@@ -248,6 +252,8 @@ updateMealFood = (meal, post) ->
     food_id: post.update
     grams: post.grams
   )
+
+allMeals = dbAll(queries.meals + ' ORDER BY created_at DESC')
 
 actions = {
   root: (match) ->
@@ -309,7 +315,7 @@ actions = {
 
 
   meals: (match) ->
-    dbAll(queries.meals + ' ORDER BY created_at DESC').pipe (meals) ->
+    allMeals.pipe (meals) ->
       showView('meals', meals: meals)
 
   manageMeals: (match) ->
@@ -318,8 +324,8 @@ actions = {
         db_obj.run('DELETE FROM meals ' + orm.condition(id: post['delete']))
           .then redirect('/meals')
       else if post.create
-        db_obj.run(queries.meals_insert) .then(
-          db_obj.get(queries.meals + orm.condition(
+        runQuery(queries.meals_insert, { name: post.name }) .then(
+          dbGet(queries.meals + orm.condition(
             id: orm.literal('last_insert_rowid()')
           ))
         ).pipe(_.compose(redirect, mealUrl))
@@ -348,8 +354,14 @@ actions = {
         unless meal
           return error403('No meal with that id: ' + meal_id)
 
+        # first, update the name
         e_m =
-          if post['delete']
+          if post.meal_name
+            M.right dbRun(
+              "UPDATE meals SET name='" + post.meal_name +
+                "' WHERE id=" + meal_id
+            )
+          else if post['delete']
             M.right deleteMealFood(meal_id, post['delete'])
           else if post.create
             M.right createMealFood(meal, post)
@@ -357,7 +369,7 @@ actions = {
             M.right updateMealFood(meal, post)
           else M.left 'Invalid form submission.'
 
-        e_m.fromEither(
+        e_m.either(
           (m) -> m.then redirect(match[0])
           (str) -> error403 str
         )
@@ -389,15 +401,23 @@ actions = {
       unless plan
         return error403('No plan "' + plan_name + '" exists.')
 
-      dbAll(queries.plan_meals + orm.condition(plan_id: plan.id))
-        .pipe((meals) ->
-          if meals && meals.length
-            nodam.sequence _.map(meals, fillMealFoods)
-          else
-            nodam.result []
-        )
-        .pipe (mealsFilled) ->
-          showView('plan', plan: _.set(plan, 'meals', mealsFilled))
+      dbAll(
+        queries.plan_meals_with_meals + orm.condition(plan_id: plan.id)
+      ).mmap((rows) ->
+        _.fmap(model.hydrateCommonAll, rows)
+      ).pipe((meals) ->
+        if meals && meals.length
+          console.log('meals:',meals)
+
+          nodam.sequence _.map(meals, fillMealFoods)
+        else
+          nodam.result []
+      ).pipe (mealsFilled) ->
+        allMeals.pipe (all_meals) ->
+          showView('plan', {
+            plan: _.set(plan, 'meals', mealsFilled)
+            all_meals: all_meals
+          })
 
 
   createPlan: (match) ->
@@ -414,22 +434,28 @@ actions = {
 
   managePlan: (match) ->
     nodam.combine([dbM, getPost]).pipeArray (db_obj, post) ->
+      console.log(post)
       m =
         if post.create
           createPlan(post)
         else
-          dbGet(queries.plans + orm.condition(id: plan_id)).pipe (plan) ->
+          plan_name = match[1] && uriToWord(match[1])
+
+          dbGet(queries.plans + orm.condition(name: plan_name)).pipe (plan) ->
             if !plan
               nodam.result M.left('No plan with that id: ' + plan_id)
             else if post['delete']
               deletePlan(plan)
             else if post.update
               updatePlan(plan, post)
+            else if post.addMeal
+              addMealToPlan(plan, post)
             else nodam.result M.left('Invalid form submission.')
 
       m.pipe (e_m_err) ->
         e_m_err.either(
-          (m) -> m.then redirect(match[0])
+          # if things went OK, just get out of here
+          (x) -> redirect(match[0])
           (err) -> error403 err
         )
 
@@ -437,14 +463,27 @@ actions = {
 
 createPlan = (post) ->
   if post.name
-    M.right runQuery(model.queries.plans_insert, { name: post.name })
+    M.right runQuery(queries.plans_insert, { name: post.name })
       .then(
         dbGet(queries.plans + orm.condition(
           id: orm.literal('last_insert_rowid()')
         ))
       )
   else
-    nodam.result M.left('Invalid form submission.')
+    M.left('Invalid form submission.')
+
+addMealToPlan = (plan, post) ->
+  unless post.meal_name
+    return nodam.result M.left('Invalid form submission.')
+
+  model.mealByName(post.meal_name).pipe (meal) ->
+    unless meal
+      return nodam.result M.left('No meal exists by that name')
+
+    runQuery(queries.plan_meals_insert,
+      { plan_id: plan.id, meal_id: meal.id }
+    ).then(nodam.result M.right())
+
 
 routes = [
   [ '/',                  { GET: actions.root }]

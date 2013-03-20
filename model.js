@@ -66,7 +66,7 @@ var queries = {
 	meals:
 		'SELECT * FROM meals',
 	meals_insert:
-		"INSERT INTO meals (created_at) VALUES (datetime('now'))",
+		"INSERT INTO meals (name, created_at) VALUES ('<%= name %>', datetime('now'))",
 	meal_foods:
 		'SELECT * from meal_foods',
 	meal_foods_with_foods:
@@ -88,7 +88,13 @@ var queries = {
 	plans_insert:
 		"INSERT INTO plans (name) VALUES ('<%= name %>')",
 	plan_meals:
-		'SELECT * FROM plan_meals'
+		'SELECT * FROM plan_meals',
+	plan_meals_with_meals:
+		'SELECT pm.id, pm.plan_id, pm.meal_id, m.name FROM plan_meals pm ' +
+		'JOIN meals m ON m.id=pm.meal_id',
+	plan_meals_insert:
+		'INSERT INTO plan_meals (plan_id, meal_id) ' +
+			'VALUES (<%= plan_id %>, <%= meal_id %>)'
 };
 
 function setMealFoodCals(m_food) {
@@ -96,46 +102,64 @@ function setMealFoodCals(m_food) {
   return _.set(m_food, 'cals', cals);
 }
 
-function hydrateFood(row) {
-	return {
-		id: toInt(row.id),
-		name: row.name,
-		type: row.type,
-		cals: parseFloat(row.cals),
-		grams: toInt(row.food_grams)
+var INT = 'int';
+var FLOAT = 'float';
+
+function hydrateRow(types, row, keys) {
+	if (! row) throw new Error('No row given');
+
+	if (!keys) {
+		keys = _.keys(row);
 	}
+
+	var obj = {};
+
+	_.each(keys, function(k) {
+		if (row[k]) {
+			if (types.k === INT) {
+				obj[k] = parseInt(row[k], 10);
+			} else if (types.k === FLOAT) {
+				obj[k] = parseFloat(row[k]);
+			} else {
+				obj[k] = row[k];
+			}
+		}
+	});
+
+	return obj;
 }
 
-function hydrateMeal(row) {
-	return { id: toInt(row.id), created_at: row.created_at };
+var columnTypes = {
+	id: INT,
+	grams: INT,
+	food_id: INT,
+	meal_id: INT,
+	plan_id: INT,
+	ingredient_id: INT,
+	cals: FLOAT
+};
+
+function hydrateCommonAll(row) {
+	return hydrateRow(columnTypes, row, null);
 }
+
+function hydrateCommon(row, keys) {
+	return hydrateRow(columnTypes, row, keys);
+}
+
+var hydrateFood = hydrateCommon;
+var hydrateMeal = hydrateCommon;
 
 function hydrateIngredient(row) {
-	return {
-		id: toInt(row.id),
-		name: row.name,
-		type: row.type,
-		cals: parseFloat(row.cals),
-		food_grams: toInt(row.food_grams),
-		food_id: toInt(row.food_id),
-		ingredient_id: toInt(row.ingredient_id),
-		grams: toInt(row.grams)
-	};
+	return hydrateRow(_.extend({
+		food_grams: INT
+	}, columnTypes), row);
 }
 
 function hydrateMealFood(row) {
-  var m_food = {
-		meal_id: toInt(row.meal_id),
-		food_id: toInt(row.food_id),
-		grams: toInt(row.grams),
-		food: {
-			id: toInt(row.id),
-			name: row.name,
-			type: row.type,
-			cals: parseFloat(row.cals),
-			grams: toInt(row.food_grams)
-		}
-	};
+	var food = hydrateCommon(row, ['id', 'name', 'type', 'cals', 'grams']);
+	var m_food = hydrateCommon(row, ['meal_id', 'food_id', 'grams']);
+	m_food.food = food;
 
   return setMealFoodCals(m_food);
 }
@@ -163,6 +187,11 @@ function getMealFood(meal_id, food_id) {
 
 function foodByName(name) {
 	var query = queries.foods + orm.condition({name: name});
+	return dbGet(query);
+}
+
+function mealByName(name) {
+	var query = queries.meals + orm.condition({name: name});
 	return dbGet(query);
 }
 
@@ -249,10 +278,16 @@ module.exports = {
   queries:             queries,
   getFood:             getFood,
   foodByName:          foodByName,
+	mealByName:          mealByName,
   getMeal:             getMeal,
   getMealFood:         getMealFood,
+
+	hydrateRow: hydrateRow,
+	hydrateCommon: hydrateCommon,
+	hydrateCommonAll: hydrateCommonAll,
   hydrateIngredient:   hydrateIngredient,
   hydrateMealFood:     hydrateMealFood,
+
   fillIngredients:     fillIngredients,
   updateFoodCals:      updateFoodCals,
   ingredientsForFood:  ingredientsForFood,

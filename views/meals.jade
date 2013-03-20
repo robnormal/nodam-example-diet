@@ -6,17 +6,19 @@ html
 		h1 Meals
 		table
 			tr
-				th Creation Time
+				th Name
 				th
 			each meal in meals
 				form(action="/meal", method="post")
 					tr
 						td
-							a(href="#{help.mealUrl(meal)}") #{meal.created_at}
+							a(href="#{help.mealUrl(meal)}") #{meal.name || meal.created_at}
 						td
 							button(name="delete", value="#{meal.id}") X
 			form(action="/meal", method="post")
 				tr
+					td
+						input(type="text", name="name")
 					td
 						button(name="create", value="1") New meal
 

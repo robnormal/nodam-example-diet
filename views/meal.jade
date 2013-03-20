@@ -1,9 +1,14 @@
 doctype 5
 html
 	head
-		title Foods in meal at #{meal.created_at}
+		title Foods in #{meal.name}
 	body
-		h1 Foods in meal at #{meal.created_at}
+		h1 Foods in #{meal.name}
+
+		form(action="#{help.mealUrl(meal)}", method="post")
+			label(for="meal_name") Name:
+			input(type="text", name="meal_name", id="meal_name", value="#{meal.name}")
+
 		table
 			tr
 				th Name
