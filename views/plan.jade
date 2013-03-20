@@ -1,0 +1,29 @@
+doctype 5
+html
+  head
+    title #{plan.name}
+  body
+    h1 #{plan.name}
+
+    form(action="#{help.planUrl(plan)}", method="post")
+      each pm in plan.p_meals
+        h2 #{pm.meal.name} - #{help.number(2, pm.meal.cals)} calories
+        button(name="removeMeal", value="#{pm.id}") Remove
+
+        table
+          tr
+            th Name
+            th Grams
+            th 
+          each m_food in pm.meal.foods
+            tr
+              td #{m_food.food.name}
+              td #{m_food.food.grams}
+              td
+
+
+    form(action="#{help.planUrl(plan)}", method="post")
+      select(name="meal_name", id="meal_name")
+        each meal in all_meals 
+          option #{meal.name}
+      button(name="addMeal", value="1") Add meal
