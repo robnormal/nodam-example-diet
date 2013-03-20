@@ -4,10 +4,11 @@ html
     title #{plan.name}
   body
     h1 #{plan.name}
+    h2 #{plan.cals.toFixed(0)} Calories
 
     form(action="#{help.planUrl(plan)}", method="post")
       each pm in plan.p_meals
-        h2 #{pm.meal.name} - #{help.number(2, pm.meal.cals)} calories
+        h3 #{pm.meal.name} - #{pm.meal.cals.toFixed(0)} calories
         button(name="removeMeal", value="#{pm.id}") Remove
 
         table

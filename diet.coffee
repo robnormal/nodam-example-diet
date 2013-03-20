@@ -141,6 +141,13 @@ setMealCals = (meal) ->
 
   _.set(meal, 'cals', cals)
 
+setPlanCals = (plan) ->
+  cals = _.reduce(plan.p_meals, (memo, p_meal) ->
+    memo + p_meal.meal.cals
+  , 0)
+
+  _.set(plan, 'cals', cals)
+
 helper =
   number: (digits, num) ->
     strs = (num + '').split('.')
@@ -228,14 +235,14 @@ createMealFood = (meal, post) ->
       nodam.result()
     else
       # if meal food exists, add the grams of the new entry to that
-      model.getMealFood(meal.id, food.id).pipe (m_food) ->
+      model.getMealFood(meal.id, food.id).pipe (m_meal_f) ->
         post_grams = parseInt(post.grams, 10)
 
-        if m_food
+        if m_meal_f.isJust()
           runQuery(queries.meal_foods_update,
             meal_id: meal.id
             food_id: food.id
-            grams: m_food.grams + post_grams
+            grams: m_meal_f.fromJust().grams + post_grams
           )
         else
           runQuery(queries.meal_foods_insert, {
@@ -425,7 +432,7 @@ actions = {
       ).pipe (planMealsFilled) ->
         allMeals.pipe (all_meals) ->
           showView('plan', {
-            plan: _.set(plan, 'p_meals', planMealsFilled)
+            plan: setPlanCals(_.set(plan, 'p_meals', planMealsFilled))
             all_meals: all_meals
           })
 

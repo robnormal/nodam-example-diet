@@ -177,11 +177,15 @@ function getMealFood(meal_id, food_id) {
 		queries.meal_foods +
 		orm.condition({meal_id: meal_id, food_id: food_id})
 	) .mmap(function(row) {
-		return {
-			meal_id: toInt(row.meal_id),
-			food_id: toInt(row.food_id),
-			grams:   toInt(row.grams)
-		};
+		if (row) {
+			return M.just({
+				meal_id: toInt(row.meal_id),
+				food_id: toInt(row.food_id),
+				grams:   toInt(row.grams)
+			});
+		} else {
+			return M.nothing;
+		}
 	});
 }
 
@@ -227,7 +231,7 @@ function calsFromIngredients(food) {
 
 	return _.reduce(ings, function(memo, ing) {
 		return ing.cals * ing.grams;
-	}, 0) * 100 / food.grams;
+	}, 0) / food.grams;
 }
 
 function updateFoodCals(food) {
@@ -266,7 +270,7 @@ function ingredientsForFood(food) {
 	}
 }
 
-var allFoods = dbAll(queries.foods)
+var allFoods = dbAll(queries.foods + ' ORDER BY name')
 	.pipe(function(foods) {
 		return nodam.sequence(
 			_.fmap(ingredientsForFood, foods)
