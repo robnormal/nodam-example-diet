@@ -214,12 +214,10 @@ deleteMealFood = (meal_id, food_id) ->
 
 # meal -> IO meal
 fillMealFoods = (meal) ->
-  console.log(meal)
-
   dbAll(
     queries.meal_foods_with_foods + orm.condition(meal_id: meal.id)
-  ).mmap(
-    _.curry(fmap, model.hydrateMealFood)
+  ).mmap((rows) ->
+    _.fmap(model.hydrateMealFood, rows)
   ).pipe (meal_foods) ->
     meal2 = _.set(meal, 'foods', meal_foods)
     nodam.result setMealCals(meal2)
@@ -254,6 +252,20 @@ updateMealFood = (meal, post) ->
   )
 
 allMeals = dbAll(queries.meals + ' ORDER BY created_at DESC')
+
+getPlanMeals = (plan) ->
+  dbAll(
+    queries.plan_meals_with_meals + orm.condition(plan_id: plan.id)
+  ).mmap((rows) ->
+    _.map(rows, (row) ->
+      id: parseInt(row.id, 10),
+      plan_id: parseInt(row.plan_id, 10),
+      meal: {
+        id: row.meal_id
+        name: row.name
+      }
+    )
+  )
 
 actions = {
   root: (match) ->
@@ -401,21 +413,19 @@ actions = {
       unless plan
         return error403('No plan "' + plan_name + '" exists.')
 
-      dbAll(
-        queries.plan_meals_with_meals + orm.condition(plan_id: plan.id)
-      ).mmap((rows) ->
-        _.fmap(model.hydrateCommonAll, rows)
-      ).pipe((meals) ->
-        if meals && meals.length
-          console.log('meals:',meals)
+      getPlanMeals(plan).pipe((p_meals) ->
+        if p_meals && p_meals.length
 
-          nodam.sequence _.map(meals, fillMealFoods)
+          nodam.sequence(_.map(p_meals, (p_meal) ->
+            fillMealFoods(p_meal.meal).mmap (meal) ->
+              _.set(p_meal, 'meal', meal)
+          ))
         else
           nodam.result []
-      ).pipe (mealsFilled) ->
+      ).pipe (planMealsFilled) ->
         allMeals.pipe (all_meals) ->
           showView('plan', {
-            plan: _.set(plan, 'meals', mealsFilled)
+            plan: _.set(plan, 'p_meals', planMealsFilled)
             all_meals: all_meals
           })
 
@@ -434,7 +444,6 @@ actions = {
 
   managePlan: (match) ->
     nodam.combine([dbM, getPost]).pipeArray (db_obj, post) ->
-      console.log(post)
       m =
         if post.create
           createPlan(post)
@@ -450,6 +459,8 @@ actions = {
               updatePlan(plan, post)
             else if post.addMeal
               addMealToPlan(plan, post)
+            else if post.removeMeal
+              removeMealFromPlan(plan, post)
             else nodam.result M.left('Invalid form submission.')
 
       m.pipe (e_m_err) ->
@@ -483,6 +494,13 @@ addMealToPlan = (plan, post) ->
     runQuery(queries.plan_meals_insert,
       { plan_id: plan.id, meal_id: meal.id }
     ).then(nodam.result M.right())
+
+removeMealFromPlan = (plan, post) ->
+  unless post.removeMeal
+    return nodam.result M.left('Invalid form submission.')
+
+  dbRun('DELETE FROM plan_meals' + orm.condition(id: post.removeMeal))
+    .then(nodam.result M.right())
 
 
 routes = [
