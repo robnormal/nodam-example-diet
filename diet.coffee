@@ -4,13 +4,13 @@ process.on 'error', (err) ->
   console.log err.stack
 
 _     = require '../nodam/lib/curry.js'
-nodam = require '../nodam/lib/nodam.js'
-sql   = require '../nodam/lib/sqlite.js'
+nodam = require '../nodam/lib/nodam-basic.js'
+sql   = require '../nodam/lib/sqlite-basic.js'
 R     = require '../nodam/lib/restriction.js'
 
 orm   = require './lib/orm.js'
-db = require './model.js'
-web   = require './web.js'
+db    = require './model.js'
+web   = require './web.coffee'
 
 qs    = require 'querystring'
 jade  = require 'jade'
@@ -362,7 +362,8 @@ routes = [
   [ /^\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }]
 ]
 
-nodam.http().createServer((request, response) ->
+require('http').createServer((request, response) ->
+# nodam.http().createServer((request, response) ->
   nodam.debug true
 
   web.routeRequest(request, routes).or(web.error404)

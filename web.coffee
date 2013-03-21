@@ -1,6 +1,6 @@
 _ = require("../nodam/lib/curry.js")
-nodam = require("../nodam/lib/nodam.js")
-sql = require("../nodam/lib/sqlite.js")
+nodam = require("../nodam/lib/nodam-basic.js")
+sql = require("../nodam/lib/sqlite-basic.js")
 R = require('../nodam/lib/restriction.js')
 orm = require("./lib/orm.js")
 model = require("./model.js")
@@ -37,10 +37,10 @@ getPost = nodam.get('request').pipe (req) ->
     req.on 'data', (data) ->
       postData += data  if postData.length < 1000
 
-    new nodam.AsyncMonad((r, f, s) ->
-      req.on 'end', ->
-        r qs.parse(postData), s
-
+    new nodam.AsyncMonad((apass) ->
+      req.on('end', ->
+        apass.success(M.right(qs.parse(postData)), apass.state)
+      )
     )
   else
     nodam.result []

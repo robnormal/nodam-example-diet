@@ -19,7 +19,7 @@ var queries = [
 var
 	sqlite = require('../../nodam/lib/sqlite.js'),
 	_      = require('../../nodam/lib/curry.js'),
-	nodam  = require('../../nodam/lib/nodam.js');
+	nodam  = require('../../nodam/lib/nodam-basic.js');
 
 sqlite.database('../diet.db').pipe(function(db) {
 	var ms = _.map(queries, function(q) { return db.run(q); });

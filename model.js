@@ -1,8 +1,8 @@
 var
   _      = require('../nodam/lib/curry.js'),
   orm    = require('./lib/orm.js'),
-  nodam  = require('../nodam/lib/nodam.js'),
-  sql    = require('../nodam/lib/sqlite.js'),
+  nodam  = require('../nodam/lib/nodam-basic.js'),
+  sql    = require('../nodam/lib/sqlite-basic.js'),
 	R      = require('../nodam/lib/restriction.js'),
   M      = nodam.Maybe;
 
