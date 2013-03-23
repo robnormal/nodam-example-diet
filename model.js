@@ -289,7 +289,7 @@ function calsFromIngredients(food) {
 
 	return _.reduce(ings, function(memo, ing) {
 		return ing.cals * ing.grams;
-	}, 0) / food.grams;
+	}, 0) * 100 / food.grams;
 }
 
 function updateFoodCals(food) {

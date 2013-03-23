@@ -7,12 +7,14 @@ html
 		table
 			tr
 				th Name
+				th Cals
 				th
 			each meal in meals
 				form(action="/meal", method="post")
 					tr
 						td
 							a(href="#{help.mealUrl(meal)}") #{meal.name || meal.created_at}
+						td= help.number(2, meal.cals)
 						td
 							button(name="delete", value="#{meal.id}") X
 			form(action="/meal", method="post")

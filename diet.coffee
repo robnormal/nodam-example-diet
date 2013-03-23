@@ -68,7 +68,7 @@ deleteIngredient = (post, food) ->
   db.run('DELETE FROM ingredients ' + orm.condition(
     food_id: food.id
     ingredient_id: post['delete']
-  ))
+  )).then(db.updateFoodCals(food))
 
 
 addIngredient = (post, food) ->
@@ -218,7 +218,11 @@ actions = {
 
   meals: (match) ->
     db.allMeals.pipe (meals) ->
-      web.showView('meals', meals: meals)
+      if meals
+        nodam.mapM(meals, db.fillMealFoods).pipe (fmeals) ->
+          web.showView('meals', meals: fmeals)
+      else
+        web.showView('meals', meals: [])
 
   manageMeals: (match) ->
     nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->

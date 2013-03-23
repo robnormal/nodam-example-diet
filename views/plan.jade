@@ -3,20 +3,21 @@ html
   head
     title #{plan.name}
     style
-      h3 {
-        display: inline;
-        padding-right: 1em;
+      h3 > button {
+        margin-left: 1em;
       }
 
   body
     h1 #{plan.name}
     h2 #{plan.cals.toFixed(0)} Calories
 
-    form(action="#{help.planUrl(plan)}", method="post")
-      each pm in plan.p_meals
-        h3 #{pm.meal.name} - #{pm.meal.cals.toFixed(0)} calories
-        button(name="removeMeal", value="#{pm.id}") Remove
+    each pm in plan.p_meals
+      form(action="#{help.planUrl(plan)}", method="post")
+        h3
+          | <a href="#{help.mealUrl(pm.meal)}">#{pm.meal.name}</a> - #{pm.meal.cals.toFixed(0)} calories
+          button(name="removeMeal", value="#{pm.id}") Remove
 
+      form(action="#{help.mealUrl(pm.meal)}", method="post")
         table
           tr
             th Name
