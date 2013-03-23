@@ -106,9 +106,10 @@ var
 
 	dbClose = dbFunction('close'),
 	dbGetOrFail = function(q, params) {
-		return dbGet(q, params).pipe(function(m_row) {
-			return m_row.or(new DBEmptyFailure(q, params));
-		});
+		return dbGet(q, params).pipeMaybe(
+			new DBEmptyFailure(q, params),
+			nodam.result
+		);
 	};
 
 var queries = {
@@ -329,7 +330,8 @@ function ingredientsForFood(food) {
 
 var allFoods = dbAll(queries.foods + ' ORDER BY name')
 	.pipe(function(foods) {
-		return nodam.sequence(
+		return nodam.sequenceMe(
+			nodam.AsyncMonad,
 			_.fmap(ingredientsForFood, foods)
 		)
 	});
@@ -368,7 +370,9 @@ function getPlanMeals(plan) {
 }
 
 function deleteFood(id) {
-  return dbRun('DELETE FROM foods ' + orm.condition({ id: id }));
+  return dbRun('DELETE FROM foods ' + orm.condition({ id: id }))
+		.then(dbRun('DELETE FROM ingredients ' + orm.condition({ food_id: id })))
+		.then(dbRun('DELETE FROM meal_foods ' + orm.condition({ food_id: id })));
 }
 
 function fillMealFoods(meal) {
@@ -397,6 +401,18 @@ function updateMealName(meal, name) {
 
 function mealById(id) {
 	return dbGet(queries.meals + orm.condition({ id: id }));
+}
+
+        
+function deleteMeal(id) {
+	return dbRun('DELETE FROM meals ' + orm.condition({ id: id }))
+		.then(dbRun('DELETE FROM meal_foods ' + orm.condition({ meal_id: id })))
+		.then(dbRun('DELETE FROM plan_meals ' + orm.condition({ meal_id: id })));
+}
+
+function deletePlan(id) {
+	return dbRun('DELETE FROM plans ' + orm.condition({ id: id }))
+		.then(dbRun('DELETE FROM plan_meals ' + orm.condition({ plan_id: id })));
 }
 
 function getIngredient(food_id, ing_id) {
@@ -451,6 +467,7 @@ module.exports = {
 	runQ:     dbRunQ,
 	reduceQ:  dbReduceQ,
 	close:    dbClose,
+	getOrFail: dbGetOrFail,
 
 	hydrateRow:          hydrateRow,
 	hydrateCommon:       hydrateCommon,
@@ -479,6 +496,7 @@ module.exports = {
 	setPlanCals:        setPlanCals,
 	deleteFood:         deleteFood,
 	deleteMealFood:     deleteMealFood,
+	deletePlan:         deletePlan,
 
 	toInt: toInt
 };

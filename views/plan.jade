@@ -2,6 +2,12 @@ doctype 5
 html
   head
     title #{plan.name}
+    style
+      h3 {
+        display: inline;
+        padding-right: 1em;
+      }
+
   body
     h1 #{plan.name}
     h2 #{plan.cals.toFixed(0)} Calories
@@ -15,7 +21,7 @@ html
           tr
             th Name
             th Grams
-            th 
+            th
           each m_food in pm.meal.foods
             tr
               td #{m_food.food.name}
@@ -25,6 +31,6 @@ html
 
     form(action="#{help.planUrl(plan)}", method="post")
       select(name="meal_name", id="meal_name")
-        each meal in all_meals 
+        each meal in all_meals
           option #{meal.name}
       button(name="addMeal", value="1") Add meal

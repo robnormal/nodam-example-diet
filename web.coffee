@@ -35,7 +35,7 @@ getJade = (file, data) ->
     nodam.result jade.compile(view)(data)
 
 error404 = webFailure(404, 'Could not find requested URL')
-error403 = (msg) -> webFailure(403, msg)
+error403 = (msg) -> webFailure(403, msg.toString())
 
 getPost = nodam.get('request').pipe (req) ->
   if req.method == POST

@@ -73,7 +73,8 @@ deleteIngredient = (post, food) ->
 
 addIngredient = (post, food) ->
   db.addIngredient(food, post.ing_name, toInt(post.grams) || 0)
-    .rescue web.error403('No ingredient called "' + post.ing_name + '" was found.')
+    .rescue () ->
+      web.error403('No ingredient called "' + post.ing_name + '" was found.')
 
 updateIngredient = (post, food) ->
   db.runQuery(queries.ingredients_update,
@@ -130,12 +131,14 @@ addMealToPlan = (post, plan) ->
   unless post.meal_name
     return nodam.failure 'Invalid form submission.'
 
-  db.mealByName(post.meal_name).pipePipe((meal) ->
-    db.runQuery(queries.plan_meals_insert,
-      plan_id: plan.id
-      meal_id: m_meal.id
-    )
-  ).or nodam.failure('No meal exists by that name')
+  db.mealByName(post.meal_name).pipeMaybe(
+    nodam.failure('No meal exists by that name'),
+    (meal) ->
+      db.runQuery(queries.plan_meals_insert,
+        plan_id: plan.id
+        meal_id: meal.id
+      )
+  )
 
 removeMealFromPlan = (post, plan) ->
   if post.removeMeal
@@ -174,8 +177,8 @@ actions = {
     unless food_name
       return web.error404
 
-    db.foodByName(food_name)
-      .pipeMaybe web.error404,
+    db.foodByName(food_name).pipeMaybe \
+      web.error404,
       (food) ->
         if food.type == 'dish'
           db.ingredientsForFood(food).pipe (food2) ->
@@ -194,23 +197,22 @@ actions = {
       return web.error404
 
     web.getPost.pipe (post) ->
-      db.foodByName(food_name)
-        .pipeMaybe(
-          web.error403('No such food: ' + food_name),
-          (food) ->
-            changes =
-              if 'dish' != food.type
-                web.error403(food_name + ' cannot have ingredients.')
-              else if post['delete']
-                deleteIngredient(post, food)
-              else if post.create
-                addIngredient(post, food)
-              else if post.update
-                updateIngredient(post, food)
-              else
-                web.error403 'Invalid form submission.'
+      db.foodByName(food_name).pipeMaybe(
+        web.error403('No such food: ' + food_name),
+        (food) ->
+          changes =
+            if 'dish' != food.type
+              web.error403(food_name + ' cannot have ingredients.')
+            else if post['delete']
+              deleteIngredient(post, food)
+            else if post.create
+              addIngredient(post, food)
+            else if post.update
+              updateIngredient(post, food)
+            else
+              web.error403 'Invalid form submission.'
 
-            changes.then(web.redirect(match[0]))
+          changes.then(web.redirect(match[0]))
         )
 
 
@@ -221,14 +223,14 @@ actions = {
   manageMeals: (match) ->
     nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
       if post['delete']
-        db.run('DELETE FROM meals ' + orm.condition(id: post['delete']))
+        db.deleteMeal(post['delete'])
           .then web.redirect('/meals')
 
       else if post.create
         db.runQuery(queries.meals_insert, { name: post.name })
           .then(getLatestMeal)
           .pipeMaybe(
-            web.error403 apology,
+            web.error403(apology),
             (meal) -> web.redirect(mealUrl meal)
           )
 
@@ -298,11 +300,13 @@ actions = {
       web.error403('No plan "' + plan_name + '" exists.'),
       (plan) ->
         db.getPlanMeals(plan).pipe( (p_meals) ->
-          nodam.mapM(p_meals, (p_meal) ->
-            db.fillMealFoods(p_meal.meal).mmap( (meal) ->
-              _.set(p_meal, 'meal', meal)
+          if p_meals.length
+            nodam.mapM(p_meals, (p_meal) ->
+              db.fillMealFoods(p_meal.meal).mmap( (meal) ->
+                _.set(p_meal, 'meal', meal)
+              )
             )
-          )
+          else nodam.result([])
         ).pipe (planMealsFilled) ->
           planFilled = _.set(plan, 'p_meals', planMealsFilled)
 
@@ -314,40 +318,46 @@ actions = {
     )
 
   createPlan: (match) ->
-    nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
+    nodam.combineStrict([dbM, web.getPost]).pipeArray((db_obj, post) ->
       newPlan =
         if post.create
           createPlan(post)
-        else nodam.failure 'Invalid form submission.'
+        else nodam.failure('Invalid form submission.')
 
-      newPlan.pipe((plan) -> web.redirect planUrl(plan))
-        .rescue web.error403
+      newPlan.pipe((plan) ->
+        console.log('plan:', plan)
+        web.redirect(planUrl plan)
+      ).rescue((msg) ->
+        console.log('msg:', msg)
+        web.error403(msg)
+      )
+    )
 
   managePlan: (match) ->
     nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
-      m =
-        if post.create
-          createPlan(post)
-        else
-          plan_name = match[1] && web.uriToWord(match[1])
+      if post['delete']
+        db.deletePlan(post['delete'])
+          .then(web.redirect '/plans')
+      else if post.create
+        (createPlan post).pipe (new_plan) ->
+          web.redirect(planUrl new_plan)
+      else
+        plan_name = match[1] && web.uriToWord(match[1])
 
-          db.get(queries.plans + orm.condition(name: plan_name)).pipeMaybe(
-            nodam.failure('No plan with that id: ' + plan_id),
+        m = db.get(queries.plans + orm.condition(name: plan_name)).pipeMaybe(
+          nodam.failure('No plan with that name: ' + plan_name),
+          (plan) ->
+            if post.update
+              updatePlan(post, plan)
+            else if post.addMeal
+              addMealToPlan(post, plan)
+            else if post.removeMeal
+              removeMealFromPlan(post, plan)
+            else nodam.failure 'Invalid form submission.'
+        )
 
-            (plan) ->
-              if post['delete']
-                deletePlan plan
-              else if post.update
-                updatePlan(post, plan)
-              else if post.addMeal
-                addMealToPlan(post, plan)
-              else if post.removeMeal
-                removeMealFromPlan(post, plan)
-              else nodam.failure 'Invalid form submission.'
-          )
-
-      m.then(web.redirect(match[0]))
-        .rescue(web.error403)
+        m.then(web.redirect(match[0]))
+          .rescue(web.error403)
 
 }
 
