@@ -1,15 +1,30 @@
 var
   _      = require('../nodam/lib/curry.js'),
   orm    = require('./lib/orm.js'),
-  nodam  = require('../nodam/lib/nodam-basic.js'),
-  sql    = require('../nodam/lib/sqlite-basic.js'),
+  nodam  = require('../nodam/lib/nodam.js'),
+  sql    = require('../nodam/lib/sqlite.js'),
 	R      = require('../nodam/lib/restriction.js'),
-  M      = nodam.Maybe;
+  M      = nodam.Maybe,
+	util = require('util');
 
 var __slice = [].slice;
 var fmap = _.flip(_.map);
 
 function toInt(x) { return parseInt(x, 10) }
+
+function DBEmptyFailure(query, params) {
+  this.err = { query: query, params: params };
+}
+util.inherits(DBEmptyFailure, nodam.AsyncFailure);
+
+function DBMissingFailure(table, condition) {
+  this.err = { table: table, condition: condition };
+}
+util.inherits(DBMissingFailure, DBEmptyFailure);
+
+function errMissing(table, condition) {
+	return new DBMissingFailure(table, condition);
+}
 
 function getDB(file) {
 	return nodam.get('db')
@@ -29,17 +44,25 @@ function getDB(file) {
 var dbM = getDB('diet.db');
 
 
-// make code a little cleaner
-function runQuery(tmpl, data) {
-  R.manualCheck(tmpl && (typeof tmpl === 'string'), 'Expected query template')
-  return dbM.pipe(function(db_obj) {
-    return db_obj.run(_.template(tmpl, data))
-	})
+// utilities
+function requireString(str, err) {
+	if (! str) throw new Error(err || 'empty string');
 }
 
+function requireQuery(tmpl, data) {
+	R.manualCheck(tmpl && (typeof tmpl === 'string'), 'Expected string template');
+
+	var q = _.template(tmpl, data);
+	requireString(q, 'bad query template: ' + tmpl);
+
+	return q;
+}
+
+
+// make code a little cleaner
 function dbFunction(name) {
 	return function() {
-		var args = arguments
+		var args = arguments;
 		return dbM.pipe(function(db_obj) {
 			return db_obj[name].apply(db_obj, args);
 		});
@@ -57,11 +80,36 @@ function dbQueryFunction(name) {
 	};
 }
 
+function dbTemplateFunction(name) {
+	return function(tmpl, data /*, args.. */) {
+		var q = requireQuery(tmpl, data);
+
+		var args = __slice.call(arguments, 2);
+		return dbM.pipe(function(db_obj) {
+			return db_obj[name].apply(db_obj, [q].concat(args));
+		});
+	};
+}
+
+var runQuery = dbTemplateFunction('run');
+
 var
 	dbGet = dbQueryFunction('get'),
 	dbAll = dbQueryFunction('all'),
 	dbRun = dbQueryFunction('run'),
-	dbEach = dbQueryFunction('eachM');
+	dbReduce = dbQueryFunction('reduce'),
+
+	dbGetQ = dbTemplateFunction('get'),
+	dbAllQ = dbTemplateFunction('all'),
+	dbRunQ = dbTemplateFunction('run'),
+	dbReduceQ = dbTemplateFunction('reduce'),
+
+	dbClose = dbFunction('close'),
+	dbGetOrFail = function(q, params) {
+		return dbGet(q, params).pipe(function(m_row) {
+			return m_row.or(new DBEmptyFailure(q, params));
+		});
+	};
 
 var queries = {
 	foods:
@@ -80,7 +128,7 @@ var queries = {
 		'(<%= food_id %>, <%= ingred_id %>, <%= grams %>)',
 	ingredients_update:
 		'UPDATE ingredients SET grams=<%= grams %> ' +
-		'WHERE food_id=<%= food_id %> AND ingredient_id=<%= update %>',
+		'WHERE food_id=<%= food_id %> AND ingredient_id=<%= ingred_id %>',
 	ingredients_with_foods:
 		'SELECT i.food_id, i.ingredient_id, i.grams, ' +
 		'f.id, f.name, f.type, f.cals, f.grams AS food_grams FROM ingredients i ' +
@@ -195,19 +243,17 @@ function getMeal(id) {
 }
 
 function getMealFood(meal_id, food_id) {
+	if (!meal_id || !food_id) throw new R.CheckError();
+
 	return dbGet(
 		queries.meal_foods +
 		orm.condition({meal_id: meal_id, food_id: food_id})
-	) .mmap(function(row) {
-		if (row) {
-			return M.just({
-				meal_id: toInt(row.meal_id),
-				food_id: toInt(row.food_id),
-				grams:   toInt(row.grams)
-			});
-		} else {
-			return M.nothing;
-		}
+	) .mmapFmap(function(row) {
+		return {
+			meal_id: toInt(row.meal_id),
+			food_id: toInt(row.food_id),
+			grams:   toInt(row.grams || 0)
+		};
 	});
 }
 
@@ -219,17 +265,6 @@ function foodByName(name) {
 function mealByName(name) {
 	var query = queries.meals + orm.condition({name: name});
 	return dbGet(query);
-}
-
-function requireString(str, err) {
-	if (! str) throw new Error(err || 'empty string');
-}
-
-function requireQuery(template, data) {
-	var q = _.template(template, data);
-	requireString(q, 'bad query template: ' + template);
-
-	return q;
 }
 
 /**
@@ -263,10 +298,10 @@ function updateFoodCals(food) {
 		return fillIngredients(food)
 			.mmap(calsFromIngredients)
 			.pipe(function(cals) {
-				return dbRun(_.template(
+				return dbRunQ(
 					queries.food_update_cals,
 					{ cals: cals, id: food.id }
-				)) .then(nodam.result(
+				) .then(nodam.result(
 					// pass the food with the new calorie count
 					_.set(food, 'cals', cals)
 				));
@@ -348,53 +383,102 @@ function fillMealFoods(meal) {
 }
 
 function deleteMealFood(meal, food_id) {
-	return M.right(dbRun('DELETE FROM meal_foods ' + orm.condition({
+	return dbRun('DELETE FROM meal_foods ' + orm.condition({
 		meal_id: meal.id,
 		food_id: food_id
-	})));
+	}));
 }
 
 function updateMealName(meal, name) {
-	return M.right(dbRun(
+	return dbRun(
 		"UPDATE meals SET name='" + name + "' WHERE id=" + meal.id
-	));
+	);
 }
 
 function mealById(id) {
 	return dbGet(queries.meals + orm.condition({ id: id }));
 }
 
-module.exports = {
-  dbM:                 dbM,
-  queries:             queries,
-  getFood:             getFood,
-  foodByName:          foodByName,
-	mealByName:          mealByName,
-  getMeal:             getMeal,
-  getMealFood:         getMealFood,
+function getIngredient(food_id, ing_id) {
+	return dbGet(queries.ingredients + orm.condition({
+		food_id: food_id,
+		ingredient_id: ing_id
+	}));
+}
 
-	hydrateRow: hydrateRow,
-	hydrateCommon: hydrateCommon,
-	hydrateCommonAll: hydrateCommonAll,
+function increaseIngredient(food_ing, grams) {
+	return runQuery(queries.ingredients_update, {
+		food_id: food_ing.food_id,
+		ingred_id: food_ing.ingredient_id,
+		grams: toInt(food_ing.grams) + grams
+	});
+}
+
+function createIngredient(food, ingred, grams) {
+	return runQuery(queries.ingredients_insert, {
+		food_id: food.id,
+		ingred_id: ingred.id,
+		grams: grams
+	})
+}
+
+function addIngredient(food, ing_name, grams) {
+  return foodByName(ing_name) .pipeMaybe(
+		errMissing('foods', { name: ing_name }),
+		function (ingred) {
+			return getIngredient(food.id, ingred.id) .pipeMaybe(
+				createIngredient(food, ingred, grams),
+				function (food_ing) {
+					return increaseIngredient(food_ing, grams);
+				}
+			).then(updateFoodCals(food));
+		}
+	);
+}
+
+module.exports = {
+  dbM: dbM,
+  DBMissingFailure: DBMissingFailure,
+  DBEmptyFailure: DBEmptyFailure,
+
+	runQuery: runQuery,
+	get:      dbGet,
+	all:      dbAll,
+	run:      dbRun,
+	reduce:   dbReduce,
+	getQ:     dbGetQ,
+	allQ:     dbAllQ,
+	runQ:     dbRunQ,
+	reduceQ:  dbReduceQ,
+	close:    dbClose,
+
+	hydrateRow:          hydrateRow,
+	hydrateCommon:       hydrateCommon,
+	hydrateCommonAll:    hydrateCommonAll,
   hydrateIngredient:   hydrateIngredient,
   hydrateMealFood:     hydrateMealFood,
 
-  fillIngredients:     fillIngredients,
-  updateFoodCals:      updateFoodCals,
-  ingredientsForFood:  ingredientsForFood,
-  allFoods:            allFoods,
+  queries:             queries,
 
-	runQuery: runQuery,
-	dbGet: dbGet,
-	dbAll: dbAll,
-	dbRun: dbRun,
-	dbEach: dbEach,
+	getFood:            getFood,
+	foodByName:         foodByName,
+	mealByName:         mealByName,
+	mealById:           mealById,
+	getMeal:            getMeal,
+	getMealFood:        getMealFood,
+	allFoods:           allFoods,
+	allMeals:           allMeals,
+	ingredientsForFood: ingredientsForFood,
+	fillIngredients:    fillIngredients,
+	fillMealFoods:      fillMealFoods,
+	getPlanMeals:       getPlanMeals,
+	addIngredient:   addIngredient,
+	updateFoodCals:     updateFoodCals,
+	updateMealName:     updateMealName,
+	setMealCals:        setMealCals,
+	setPlanCals:        setPlanCals,
+	deleteFood:         deleteFood,
+	deleteMealFood:     deleteMealFood,
 
-	setMealCals: setMealCals,
-	setPlanCals: setPlanCals,
-	getPlanMeals: getPlanMeals,
-	deleteFood: deleteFood,
-	fillMealFoods: fillMealFoods,
-	deleteMealFood: deleteMealFood,
-	mealById: mealById
+	toInt: toInt
 };

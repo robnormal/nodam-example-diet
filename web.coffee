@@ -1,35 +1,41 @@
 _ = require("../nodam/lib/curry.js")
-nodam = require("../nodam/lib/nodam-basic.js")
-sql = require("../nodam/lib/sqlite-basic.js")
+nodam = require("../nodam/lib/nodam.js")
+sql = require("../nodam/lib/sqlite.js")
 R = require('../nodam/lib/restriction.js')
 orm = require("./lib/orm.js")
 model = require("./model.js")
 
 qs = require('querystring')
 jade = require('jade')
+util = require('util')
 
 fs = nodam.fs()
 M = nodam.Maybe
+E = nodam.Either
 
 GET = 'GET'
 POST = 'POST'
 PUT = 'PUT'
 DELETE = 'DELETE'
 
+WebFailure = (@err) ->
+
+util.inherits(WebFailure, nodam.AsyncFailure)
+
+webFailure = (statusCode, text) ->
+  nodam.get('response').pipe (resp) ->
+    resp.status = statusCode
+    resp.write text
+    resp.end()
+
+    new WebFailure({ status: statusCode, text: text })
+
 getJade = (file, data) ->
   fs.readFile(file, 'ascii').pipe (view) ->
     nodam.result jade.compile(view)(data)
 
-error404 = nodam.get('response').pipe (resp) ->
-  resp.status = 404
-  resp.write 'Could not find requested URL'
-  nodam.result resp.end()
-
-error403 = (msg) ->
-  nodam.get('response').pipe (resp) ->
-    resp.status = 404
-    resp.write msg
-    nodam.result resp.end()
+error404 = webFailure(404, 'Could not find requested URL')
+error403 = (msg) -> webFailure(403, msg)
 
 getPost = nodam.get('request').pipe (req) ->
   if req.method == POST
@@ -39,7 +45,7 @@ getPost = nodam.get('request').pipe (req) ->
 
     new nodam.AsyncMonad((apass) ->
       req.on('end', ->
-        apass.success(M.right(qs.parse(postData)), apass.state)
+        apass.success(E.right(qs.parse(postData)), apass.state)
       )
     )
   else
@@ -101,15 +107,15 @@ showView = (view, data) -> getView(view, data).pipe success
 logError = (msg) -> fs.writeFile('errors.log', msg)
 
 showMonadErr = (err) ->
-  console.log(err)
-  console.log err.message
-  console.log err.stack
+  console.log('err:',err)
+  console.log('message:', err.message)
+  console.log('stack:',err.stack)
 
   if err.monad
     m = _.clone(err.monad)
     delete m.stack_at_origin # show separately
-    console.log m
-    console.log 'Stack at origin:', err.monad.stack_at_origin
+    console.log('monad:', m)
+    console.log('Stack at origin:', err.monad.stack_at_origin)
 
 module.exports =
   getJade: getJade

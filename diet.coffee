@@ -1,11 +1,12 @@
-# Error.stackTraceLimit = Infinity
+Error.stackTraceLimit = Infinity
+# require('longjohn').async_trace_limit = -1
 
 process.on 'error', (err) ->
   console.log err.stack
 
 _     = require '../nodam/lib/curry.js'
-nodam = require '../nodam/lib/nodam-basic.js'
-sql   = require '../nodam/lib/sqlite-basic.js'
+nodam = require '../nodam/lib/nodam.js'
+sql   = require '../nodam/lib/sqlite.js'
 R     = require '../nodam/lib/restriction.js'
 
 orm   = require './lib/orm.js'
@@ -18,6 +19,8 @@ jade  = require 'jade'
 fs = nodam.fs()
 M  = nodam.Maybe
 
+nodam.debug true
+
 GET = 'GET'
 POST = 'POST'
 PUT = 'PUT'
@@ -26,6 +29,7 @@ DELETE = 'DELETE'
 dbM = db.dbM
 queries = db.queries
 fmap = _.flip(_.map)
+toInt = db.toInt
 
 foodUrl = (food) -> '/food/' + web.wordToUri(food.name)
 mealUrl = (meal) -> '/meal/' + meal.id
@@ -35,7 +39,13 @@ web.helper.foodUrl = foodUrl
 web.helper.mealUrl = mealUrl
 web.helper.planUrl = planUrl
 
+apology = 'Sorry, there was a problem with your request.'
 
+# for now, do nothing here
+logError = (err) ->
+  console.log(err)
+  console.log(err.stack)
+  nodam.result()
 
 createFood = (post) ->
   db.runQuery(queries.foods_insert,
@@ -55,48 +65,51 @@ updateFood = (post) ->
   )
 
 deleteIngredient = (post, food) ->
-  db.dbRun('DELETE FROM ingredients ' + orm.condition(
+  db.run('DELETE FROM ingredients ' + orm.condition(
     food_id: food.id
     ingredient_id: post['delete']
   ))
 
-createIngredient = (post, food) ->
-  db.foodByName(post.ing_name).pipe (ingred) ->
-    unless ingred && ingred.id
-      return nodam.result()
 
-    db.runQuery(queries.ingredients_insert,
-      food_id: food.id
-      ingred_id: ingred.id
-      grams: post.grams || 0
-    )
+addIngredient = (post, food) ->
+  db.addIngredient(food, post.ing_name, toInt(post.grams) || 0)
+    .rescue web.error403('No ingredient called "' + post.ing_name + '" was found.')
+
+updateIngredient = (post, food) ->
+  db.runQuery(queries.ingredients_update,
+    food_id: post.food_id
+    grams: post.grams
+    ingred_id: post.update
+  ).then(db.updateFoodCals(food))
 
 createMealFood = (meal, post) ->
-  db.foodByName(post.food_name).pipe (food) ->
-    if !food
-      nodam.result(M.left('No food with that name exists.'))
-    else
-      # if meal food exists, add the grams of the new entry to that
-      db.getMealFood(meal.id, food.id).pipe (m_meal_f) ->
-        post_grams = parseInt(post.grams, 10)
+  if !meal.id
+    nodam.failure 'No meal with that ID exists.'
+  else
+    post_grams = toInt(post.grams || 0)
 
-        M.right(
-          if m_meal_f.isJust()
-            db.runQuery(queries.meal_foods_update,
-              meal_id: meal.id
-              food_id: food.id
-              grams: m_meal_f.fromJust().grams + post_grams
-            )
-          else
-            db.runQuery(queries.meal_foods_insert, {
+    db.foodByName(post.food_name).pipeMaybe(
+      nodam.failure('No food with that name exists.'),
+      (food) ->
+        # if meal food exists, add the grams of the new entry to that
+        db.getMealFood(meal.id, food.id).pipe( (m_meal_food) ->
+          if m_meal_food.isNothing()
+            db.runQuery(queries.meal_foods_insert,
               meal_id: meal.id
               food_id: food.id
               grams: post_grams
-            })
+            )
+          else
+            db.runQuery(queries.meal_foods_update,
+              meal_id: meal.id
+              food_id: food.id
+              grams: m_meal_food.fromJust().grams + post_grams
+            )
         )
+    )
 
 updateMealFood = (meal, post) ->
-  M.right db.runQuery(queries.meal_foods_update,
+  db.runQuery(queries.meal_foods_update,
     meal_id: meal.id
     food_id: post.update
     grams: post.grams
@@ -104,36 +117,35 @@ updateMealFood = (meal, post) ->
 
 createPlan = (post) ->
   if post.name
-    M.right db.runQuery(queries.plans_insert, { name: post.name })
+    db.runQuery(queries.plans_insert, { name: post.name })
       .then(
-        db.dbGet(queries.plans + orm.condition(
+        db.getOrFail(queries.plans + orm.condition(
           id: orm.literal('last_insert_rowid()')
         ))
       )
   else
-    M.left('Invalid form submission.')
+    nodam.failure 'Invalid form submission.'
 
 addMealToPlan = (post, plan) ->
   unless post.meal_name
-    return nodam.result M.left('Invalid form submission.')
+    return nodam.failure 'Invalid form submission.'
 
-  db.mealByName(post.meal_name).pipe (meal) ->
-    unless meal
-      return nodam.result M.left('No meal exists by that name')
-
+  db.mealByName(post.meal_name).pipePipe((meal) ->
     db.runQuery(queries.plan_meals_insert,
-      { plan_id: plan.id, meal_id: meal.id }
-    ).then(nodam.result M.right())
+      plan_id: plan.id
+      meal_id: m_meal.id
+    )
+  ).or nodam.failure('No meal exists by that name')
 
 removeMealFromPlan = (post, plan) ->
-  unless post.removeMeal
-    return nodam.result M.left('Invalid form submission.')
+  if post.removeMeal
+    db.run('DELETE FROM plan_meals' + orm.condition(id: post.removeMeal))
+  else
+    nodam.failure 'Invalid form submission.'
 
-  db.dbRun('DELETE FROM plan_meals' + orm.condition(id: post.removeMeal))
-    .then(nodam.result M.right())
 
 
-getLatestMeal = db.dbGet(queries.meals + orm.condition(
+getLatestMeal = db.get(queries.meals + orm.condition(
   id: orm.literal('last_insert_rowid()')
 ))
 
@@ -162,90 +174,86 @@ actions = {
     unless food_name
       return web.error404
 
-    db.foodByName(food_name).pipe (food) ->
-      if !food
-        web.error404
-      else if food.type == 'dish'
-        db.ingredientsForFood(food).pipe (food2) ->
-          web.showView('ingredients',
-            ingredients: food2.ingredients
-            food: food2
-            food_url: foodUrl(food2)
-          )
-      else
-        nodam.result(food.name + ' has no ingredients.')
-
+    db.foodByName(food_name)
+      .pipeMaybe web.error404,
+      (food) ->
+        if food.type == 'dish'
+          db.ingredientsForFood(food).pipe (food2) ->
+            web.showView('ingredients',
+              ingredients: food2.ingredients
+              food: food2
+              food_url: foodUrl(food2)
+            )
+        else
+          nodam.result(food.name + ' has no ingredients.')
 
   manageIngredients: (match) ->
     food_name = match[1] && web.uriToWord(match[1])
+
     unless food_name
       return web.error404
 
     web.getPost.pipe (post) ->
-      db.foodByName(food_name).pipe (food) ->
-        unless food
-          return web.error403('No such food: ' + food_name)
-        unless 'dish' == food.type
-          return web.error403(food_name + ' cannot have ingredients.')
+      db.foodByName(food_name)
+        .pipeMaybe(
+          web.error403('No such food: ' + food_name),
+          (food) ->
+            changes =
+              if 'dish' != food.type
+                web.error403(food_name + ' cannot have ingredients.')
+              else if post['delete']
+                deleteIngredient(post, food)
+              else if post.create
+                addIngredient(post, food)
+              else if post.update
+                updateIngredient(post, food)
+              else
+                web.error403 'Invalid form submission.'
 
-        m =
-          if post['delete']
-            deleteIngredient(post, food)
-          else if post.create
-            createIngredient(post, food)
-          else if post.update
-            db.runQuery(queries.ingredients_update, post)
-          else false
-
-        if m
-          m.then(db.updateFoodCals(food))
-            .then web.redirect(match[0])
-        else
-          web.error403 'Invalid form submission.'
+            changes.then(web.redirect(match[0]))
+        )
 
 
   meals: (match) ->
-    allMeals.pipe (meals) ->
+    db.allMeals.pipe (meals) ->
       web.showView('meals', meals: meals)
 
   manageMeals: (match) ->
-    nodam.combine([dbM, web.getPost]).pipeArray (db_obj, post) ->
+    nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
       if post['delete']
-        db.dbRun('DELETE FROM meals ' + orm.condition(id: post['delete']))
+        db.run('DELETE FROM meals ' + orm.condition(id: post['delete']))
           .then web.redirect('/meals')
 
       else if post.create
         db.runQuery(queries.meals_insert, { name: post.name })
           .then(getLatestMeal)
-          .pipe (meal) -> web.redirect(mealUrl meal)
+          .pipeMaybe(
+            web.error403 apology,
+            (meal) -> web.redirect(mealUrl meal)
+          )
 
       # if nothing to do, send back to meals
       else web.redirect '/meals'
-        
+
 
   meal: (match) ->
     unless match[1]
       return web.error404
 
-    db.mealById(match[1]).pipe (meal) ->
-      if !meal
-        web.error404
-      else
-        db.fillMealFoods(meal).pipe (mealFilled) ->
-          web.showView('meal', { meal_foods: mealFilled.foods, meal: mealFilled })
+    db.mealById(match[1]).pipeMaybe(web.error404, (meal) ->
+      db.fillMealFoods(meal).pipe (mealFilled) ->
+        web.showView('meal', { meal_foods: mealFilled.foods, meal: mealFilled })
+    )
 
   mealFoods: (match) ->
     meal_id = match[1]
     unless meal_id
       return web.error404
 
-    nodam.combine([dbM, web.getPost]).pipeArray (db_obj, post) ->
-      mealById(meal_id).pipe (meal) ->
-        unless meal
-          return web.error403('No meal with that id: ' + meal_id)
-
-        # first, update the name
-        e_m =
+    nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
+      changes = db.mealById(meal_id).pipeMaybe(
+        nodam.failure('No meal with that id: ' + meal_id),
+        (meal) ->
           if post.meal_name
             db.updateMealName(meal, post.meal_name)
           else if post['delete']
@@ -254,96 +262,92 @@ actions = {
             createMealFood(meal, post)
           else if post.update
             updateMealFood(meal, post)
-          else nodam.result(M.left 'Invalid form submission.')
+          else
+            nodam.failure 'Invalid form submission.'
+      )
 
-        e_m.either(
-          (m) -> m.then web.redirect(match[0])
-          (str) -> web.error403 str
-        )
+      changes.then(web.redirect match[0])
+        .rescue (err) ->
+          logError(err).then(web.error403 apology)
 
   foodList: (match) ->
     term = match[2]
-    (
+    m =
       if term
-        db.dbAll(_.template(
-          db.queries.food_list,
-          { term: term }
-        )).mmap (rows) ->
-
+        db.allQ(db.queries.food_list, term: term ).mmap (rows) ->
           if rows
             names = _.map(rows, (row) -> row.name)
             JSON.stringify names
           else
             nodam.result('')
-
       else
         nodam.result('')
-    ).pipe web.success
+    
+    m.pipe web.success
 
   plans: (match) ->
-    db.dbAll(queries.plans).pipe (plans) ->
+    db.all(queries.plans).pipe (plans) ->
       web.showView('plans', plans: plans)
 
   planMeals: (match) ->
     plan_name = match[1] && web.uriToWord(match[1])
 
-    db.dbGet(queries.plans + orm.condition(name: plan_name)).pipe (plan) ->
-      unless plan
-        return web.error403('No plan "' + plan_name + '" exists.')
-
-      getPlanMeals(plan).pipe((p_meals) ->
-        if p_meals && p_meals.length
-
-          nodam.sequence(_.map(p_meals, (p_meal) ->
-            db.fillMealFoods(p_meal.meal).mmap (meal) ->
+    db.get(
+      queries.plans + orm.condition(name: plan_name)
+    ).pipeMaybe(
+      web.error403('No plan "' + plan_name + '" exists.'),
+      (plan) ->
+        db.getPlanMeals(plan).pipe( (p_meals) ->
+          nodam.mapM(p_meals, (p_meal) ->
+            db.fillMealFoods(p_meal.meal).mmap( (meal) ->
               _.set(p_meal, 'meal', meal)
-          ))
-        else
-          nodam.result []
-      ).pipe (planMealsFilled) ->
-        allMeals.pipe (all_meals) ->
-          web.showView('plan', {
-            plan: db.setPlanCals(_.set(plan, 'p_meals', planMealsFilled))
-            all_meals: all_meals
-          })
+            )
+          )
+        ).pipe (planMealsFilled) ->
+          planFilled = _.set(plan, 'p_meals', planMealsFilled)
 
+          db.allMeals.pipe (all_meals) ->
+            web.showView('plan',
+              plan: db.setPlanCals(planFilled)
+              all_meals: all_meals
+            )
+    )
 
   createPlan: (match) ->
-    nodam.combine([dbM, web.getPost]).pipeArray (db_obj, post) ->
-      e_m = (post.create && createPlan(post)) || M.left('Invalid form submission.')
+    nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
+      newPlan =
+        if post.create
+          createPlan(post)
+        else nodam.failure 'Invalid form submission.'
 
-      e_m.either(
-        (m) -> m.pipe((plan) -> web.redirect planUrl(plan))
-        (err) -> web.error403 err
-      )
+      newPlan.pipe((plan) -> web.redirect planUrl(plan))
+        .rescue web.error403
 
   managePlan: (match) ->
-    nodam.combine([dbM, web.getPost]).pipeArray (db_obj, post) ->
+    nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
       m =
         if post.create
           createPlan(post)
         else
           plan_name = match[1] && web.uriToWord(match[1])
 
-          db.dbGet(queries.plans + orm.condition(name: plan_name)).pipe (plan) ->
-            if !plan
-              nodam.result M.left('No plan with that id: ' + plan_id)
-            else if post['delete']
-              deletePlan plan
-            else if post.update
-              updatePlan(post, plan)
-            else if post.addMeal
-              addMealToPlan(post, plan)
-            else if post.removeMeal
-              removeMealFromPlan(post, plan)
-            else nodam.result M.left('Invalid form submission.')
+          db.get(queries.plans + orm.condition(name: plan_name)).pipeMaybe(
+            nodam.failure('No plan with that id: ' + plan_id),
 
-      m.pipe (e_m_err) ->
-        e_m_err.either(
-          # if things went OK, just get out of here
-          (x) -> web.redirect(match[0])
-          (err) -> web.error403 err
-        )
+            (plan) ->
+              if post['delete']
+                deletePlan plan
+              else if post.update
+                updatePlan(post, plan)
+              else if post.addMeal
+                addMealToPlan(post, plan)
+              else if post.removeMeal
+                removeMealFromPlan(post, plan)
+              else nodam.failure 'Invalid form submission.'
+          )
+
+      m.then(web.redirect(match[0]))
+        .rescue(web.error403)
 
 }
 
@@ -362,17 +366,16 @@ routes = [
   [ /^\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }]
 ]
 
-require('http').createServer((request, response) ->
 # nodam.http().createServer((request, response) ->
-  nodam.debug true
-
+require('http').createServer((request, response) ->
   web.routeRequest(request, routes).or(web.error404)
     .run(
       _.inert,
       ((err) ->
-        web.showMonadErr err
-        response.write 'There was a problem with your request.'
-        response.end()
+        if (err instanceof Error)
+          web.showMonadErr err
+          response.write 'There was a problem with your request.'
+          response.end()
       ),
       { request: request, response: response }
     )
