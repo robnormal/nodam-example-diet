@@ -32,7 +32,7 @@ webFailure = (statusCode, text) ->
 
 getJade = (file, data) ->
   fs.readFile(file, 'ascii').pipe (view) ->
-    nodam.result jade.compile(view)(data)
+    nodam.result jade.compile(view, { filename: file })(data)
 
 error404 = webFailure(404, 'Could not find requested URL')
 error403 = (msg) -> webFailure(403, msg.toString())
@@ -43,7 +43,7 @@ getPost = nodam.get('request').pipe (req) ->
     req.on 'data', (data) ->
       postData += data  if postData.length < 1000
 
-    new nodam.AsyncMonad((apass) ->
+    new nodam.Async((apass) ->
       req.on('end', ->
         apass.success(E.right(qs.parse(postData)), apass.state)
       )

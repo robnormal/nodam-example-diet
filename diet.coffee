@@ -18,6 +18,7 @@ jade  = require 'jade'
 
 fs = nodam.fs()
 M  = nodam.Maybe
+Async = nodam.Async
 
 nodam.debug true
 
@@ -90,7 +91,7 @@ createMealFood = (meal, post) ->
     post_grams = toInt(post.grams || 0)
 
     db.foodByName(post.food_name).pipeMaybe(
-      nodam.failure('No food with that name exists.'),
+      nodam.failure('We have no food called "' + post.food_name + '"')
       (food) ->
         # if meal food exists, add the grams of the new entry to that
         db.getMealFood(meal.id, food.id).pipe( (m_meal_food) ->
@@ -218,11 +219,15 @@ actions = {
 
   meals: (match) ->
     db.allMeals.pipe (meals) ->
+      Async.mapM(meals, db.fillMealFoods).pipe (fmeals) ->
+        web.showView('meals', meals: fmeals)
+      ###
       if meals
-        nodam.mapM(meals, db.fillMealFoods).pipe (fmeals) ->
+        Async.mapM(meals, db.fillMealFoods).pipe (fmeals) ->
           web.showView('meals', meals: fmeals)
       else
         web.showView('meals', meals: [])
+        ###
 
   manageMeals: (match) ->
     nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
@@ -274,18 +279,15 @@ actions = {
 
       changes.then(web.redirect match[0])
         .rescue (err) ->
-          logError(err).then(web.error403 apology)
+          logError(err).then(web.error403 err)
 
   foodList: (match) ->
     term = match[2]
     m =
       if term
         db.allQ(db.queries.food_list, term: term ).mmap (rows) ->
-          if rows
-            names = _.map(rows, (row) -> row.name)
-            JSON.stringify names
-          else
-            nodam.result('')
+          names = _.map(rows || [], (row) -> row.name)
+          JSON.stringify names
       else
         nodam.result('')
     
@@ -303,14 +305,10 @@ actions = {
     ).pipeMaybe(
       web.error403('No plan "' + plan_name + '" exists.'),
       (plan) ->
-        db.getPlanMeals(plan).pipe( (p_meals) ->
-          if p_meals.length
-            nodam.mapM(p_meals, (p_meal) ->
-              db.fillMealFoods(p_meal.meal).mmap( (meal) ->
-                _.set(p_meal, 'meal', meal)
-              )
-            )
-          else nodam.result([])
+        db.getPlanMeals(plan).pipeMmap( (p_meal) ->
+          db.fillMealFoods(p_meal.meal).mmap( (meal) ->
+            _.set(p_meal, 'meal', meal)
+          )
         ).pipe (planMealsFilled) ->
           planFilled = _.set(plan, 'p_meals', planMealsFilled)
 
@@ -363,7 +361,36 @@ actions = {
         m.then(web.redirect(match[0]))
           .rescue(web.error403)
 
+  staticFile: (match) ->
+    serveFile match[0]
 }
+
+mimeTypes = {
+  html: 'text/html',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  js: 'text/javascript',
+  css: 'text/css'
+}
+
+path = require('path')
+serveFile = (file) ->
+  mimeType = mimeTypes[path.extname(file).split('.')[1]]
+  filepath = __dirname + '/' + file
+
+  nodam.get('response').pipe (res) ->
+    res.writeHead(200, mimeType || 'text/plain')
+
+    fileStream = fs.createReadStream(filepath)
+
+    Async.listen(fileStream, 'error', (err) ->
+      res.status = 404
+      res.write 'File not found.'
+
+      nodam.failure(res.end())
+    ).pipe () ->
+      nodam.result(fileStream.pipe res)
 
 
 routes = [
@@ -377,7 +404,8 @@ routes = [
   [ /^\/plan(\/?)$/,       { POST: actions.managePlan }]
   [ /^\/plan\/([\w\+-]+)/, { GET: actions.planMeals, POST: actions.managePlan }]
 
-  [ /^\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }]
+  [ /^\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }],
+  [ /^\/(assets\/.*)/, { GET: actions.staticFile } ]
 ]
 
 # nodam.http().createServer((request, response) ->

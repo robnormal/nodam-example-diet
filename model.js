@@ -5,6 +5,7 @@ var
   sql    = require('../nodam/lib/sqlite.js'),
 	R      = require('../nodam/lib/restriction.js'),
   M      = nodam.Maybe,
+	Async  = nodam.Async,
 	util = require('util');
 
 var __slice = [].slice;
@@ -30,7 +31,7 @@ function getDB(file) {
 	return nodam.get('db')
 		.pipe(function(db) {
 			if (db) {
-				return nodam.result(db);
+				return Async.result(db);
 			} else {
 				return sql.database(file).pipe(function(db_open) {
 					return nodam.set('db', db_open);
@@ -108,7 +109,7 @@ var
 	dbGetOrFail = function(q, params) {
 		return dbGet(q, params).pipeMaybe(
 			new DBEmptyFailure(q, params),
-			nodam.result
+			Async.result
 		);
 	};
 
@@ -273,12 +274,12 @@ function mealByName(name) {
  */
 function fillIngredients(food) {
 	if (food.type !== 'dish' || food.ingredients) {
-		return nodam.result(food);
+		return Async.result(food);
 	} else {
 		return dbAll(
 			queries.ingredients_with_foods + orm.condition({ 'i.food_id': food.id })
 		) .pipe(function (ings) {
-			return nodam.result(_.set(food, 'ingredients', ings));
+			return Async.result(_.set(food, 'ingredients', ings));
 		});
 	}
 }
@@ -287,14 +288,16 @@ function fillIngredients(food) {
 function calsFromIngredients(food) {
 	var ings = food.ingredients;
 
-	return _.reduce(ings, function(memo, ing) {
-		return ing.cals * ing.grams;
-	}, 0) * 100 / food.grams;
+	var total_cals = _.reduce(ings, function(memo, ing) {
+		return memo + ing.cals * ing.grams;
+	}, 0) / 100; 
+
+	return total_cals / food.grams * 100;
 }
 
 function updateFoodCals(food) {
 	if (food.type !== 'dish') {
-		return nodam.result(food);
+		return Async.result(food);
 	} else {
 		return fillIngredients(food)
 			.mmap(calsFromIngredients)
@@ -302,7 +305,7 @@ function updateFoodCals(food) {
 				return dbRunQ(
 					queries.food_update_cals,
 					{ cals: cals, id: food.id }
-				) .then(nodam.result(
+				) .then(Async.result(
 					// pass the food with the new calorie count
 					_.set(food, 'cals', cals)
 				));
@@ -312,7 +315,7 @@ function updateFoodCals(food) {
 
 function ingredientsForFood(food) {
 	if (food.type === 'ingredient') {
-		return nodam.result(food);
+		return Async.result(food);
 	} else {
 		return dbAll(
 			queries.ingredients_with_foods +
@@ -323,15 +326,14 @@ function ingredientsForFood(food) {
 		) .pipe(function (ingredients) {
 			var $food = _.set(food, 'ingredients', ingredients);
 
-			return nodam.result($food);
+			return Async.result($food);
 		});
 	}
 }
 
 var allFoods = dbAll(queries.foods + ' ORDER BY name')
 	.pipe(function(foods) {
-		return nodam.sequenceMe(
-			nodam.AsyncMonad,
+		return Async.sequence(
 			_.fmap(ingredientsForFood, foods)
 		)
 	});
@@ -382,7 +384,7 @@ function fillMealFoods(meal) {
 		return _.fmap(hydrateMealFood, rows);
 	}).pipe(function(meal_foods) {
 		var meal2 = _.set(meal, 'foods', meal_foods);
-		return nodam.result(setMealCals(meal2));
+		return Async.result(setMealCals(meal2));
 	});
 }
 

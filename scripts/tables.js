@@ -1,7 +1,7 @@
 var queries = [
 	'CREATE TABLE IF NOT EXISTS foods (' + 
 		'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, ' +
-		'type TEXT NOT NULL, cals REAL NOT NULL)',
+		'type TEXT NOT NULL, cals REAL NOT NULL, grams INT)',
 	'CREATE TABLE IF NOT EXISTS ingredients (' + 
 		'food_id INTEGER NOT NULL, ingredient_id INTEGER NOT NULL, grams INTEGER, ' +
 		'PRIMARY KEY (food_id, ingredient_id))',
@@ -19,7 +19,7 @@ var queries = [
 var
 	sqlite = require('../../nodam/lib/sqlite.js'),
 	_      = require('../../nodam/lib/curry.js'),
-	nodam  = require('../../nodam/lib/nodam-basic.js');
+	nodam  = require('../../nodam/lib/nodam.js');
 
 sqlite.database('../diet.db').pipe(function(db) {
 	var ms = _.map(queries, function(q) { return db.run(q); });

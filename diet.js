@@ -97,11 +97,13 @@
     return db.run('DELETE FROM ingredients ' + orm.condition({
       food_id: food.id,
       ingredient_id: post['delete']
-    }));
+    })).then(db.updateFoodCals(food));
   };
 
   addIngredient = function(post, food) {
-    return db.addIngredient(food, post.ing_name, toInt(post.grams) || 0).rescue(web.error403('No ingredient called "' + post.ing_name + '" was found.'));
+    return db.addIngredient(food, post.ing_name, toInt(post.grams) || 0).rescue(function() {
+      return web.error403('No ingredient called "' + post.ing_name + '" was found.');
+    });
   };
 
   updateIngredient = function(post, food) {
@@ -119,22 +121,20 @@
     } else {
       post_grams = toInt(post.grams || 0);
       return db.foodByName(post.food_name).pipeMaybe(nodam.failure('No food with that name exists.'), function(food) {
-        console.log(food);
-        console.log(_.template(queries.meal_foods_insert, {
-          meal_id: meal.id,
-          food_id: food.id,
-          grams: post_grams
-        }));
-        return db.getMealFood(meal.id, food.id).pipeMaybe(db.runQuery(queries.meal_foods_insert, {
-          meal_id: meal.id,
-          food_id: food.id,
-          grams: post_grams
-        }), function(meal_food) {
-          return db.runQuery(queries.meal_foods_update, {
-            meal_id: meal.id,
-            food_id: food.id,
-            grams: meal_food.grams + post_grams
-          });
+        return db.getMealFood(meal.id, food.id).pipe(function(m_meal_food) {
+          if (m_meal_food.isNothing()) {
+            return db.runQuery(queries.meal_foods_insert, {
+              meal_id: meal.id,
+              food_id: food.id,
+              grams: post_grams
+            });
+          } else {
+            return db.runQuery(queries.meal_foods_update, {
+              meal_id: meal.id,
+              food_id: food.id,
+              grams: m_meal_food.fromJust().grams + post_grams
+            });
+          }
         });
       });
     }
@@ -164,12 +164,12 @@
     if (!post.meal_name) {
       return nodam.failure('Invalid form submission.');
     }
-    return db.mealByName(post.meal_name).pipePipe(function(meal) {
+    return db.mealByName(post.meal_name).pipeMaybe(nodam.failure('No meal exists by that name'), function(meal) {
       return db.runQuery(queries.plan_meals_insert, {
         plan_id: plan.id,
-        meal_id: m_meal.id
+        meal_id: meal.id
       });
-    }).or(nodam.failure('No meal exists by that name'));
+    });
   };
 
   removeMealFromPlan = function(post, plan) {
@@ -245,23 +245,29 @@
     },
     meals: function(match) {
       return db.allMeals.pipe(function(meals) {
-        return web.showView('meals', {
-          meals: meals
-        });
+        if (meals) {
+          return nodam.Async.mapM(meals, db.fillMealFoods).pipe(function(fmeals) {
+            return web.showView('meals', {
+              meals: fmeals
+            });
+          });
+        } else {
+          return web.showView('meals', {
+            meals: []
+          });
+        }
       });
     },
     manageMeals: function(match) {
       return nodam.combineStrict([dbM, web.getPost]).pipeArray(function(db_obj, post) {
         if (post['delete']) {
-          return db.run('DELETE FROM meals ' + orm.condition({
-            id: post['delete']
-          })).then(web.redirect('/meals'));
+          return db.deleteMeal(post['delete']).then(web.redirect('/meals'));
         } else if (post.create) {
           return db.runQuery(queries.meals_insert, {
             name: post.name
-          }).then(getLatestMeal).pipeMaybe(web.error403(apology, function(meal) {
+          }).then(getLatestMeal).pipeMaybe(web.error403(apology), function(meal) {
             return web.redirect(mealUrl(meal));
-          }));
+          });
         } else {
           return web.redirect('/meals');
         }
@@ -337,11 +343,9 @@
       return db.get(queries.plans + orm.condition({
         name: plan_name
       })).pipeMaybe(web.error403('No plan "' + plan_name + '" exists.'), function(plan) {
-        return db.getPlanMeals(plan).pipe(function(p_meals) {
-          return nodam.mapM(p_meals, function(p_meal) {
-            return db.fillMealFoods(p_meal.meal).mmap(function(meal) {
-              return _.set(p_meal, 'meal', meal);
-            });
+        return db.getPlanMeals(plan).pipeMmap(function(p_meal) {
+          return db.fillMealFoods(p_meal.meal).mmap(function(meal) {
+            return _.set(p_meal, 'meal', meal);
           });
         }).pipe(function(planMealsFilled) {
           var planFilled;
@@ -360,29 +364,40 @@
         var newPlan;
         newPlan = post.create ? createPlan(post) : nodam.failure('Invalid form submission.');
         return newPlan.pipe(function(plan) {
+          console.log('plan:', plan);
           return web.redirect(planUrl(plan));
-        }).rescue(web.error403);
+        }).rescue(function(msg) {
+          console.log('msg:', msg);
+          return web.error403(msg);
+        });
       });
     },
     managePlan: function(match) {
       return nodam.combineStrict([dbM, web.getPost]).pipeArray(function(db_obj, post) {
         var m, plan_name;
-        m = post.create ? createPlan(post) : (plan_name = match[1] && web.uriToWord(match[1]), db.get(queries.plans + orm.condition({
-          name: plan_name
-        })).pipeMaybe(nodam.failure('No plan with that id: ' + plan_id), function(plan) {
-          if (post['delete']) {
-            return deletePlan(plan);
-          } else if (post.update) {
-            return updatePlan(post, plan);
-          } else if (post.addMeal) {
-            return addMealToPlan(post, plan);
-          } else if (post.removeMeal) {
-            return removeMealFromPlan(post, plan);
-          } else {
-            return nodam.failure('Invalid form submission.');
-          }
-        }));
-        return m.then(web.redirect(match[0])).rescue(web.error403);
+        if (post['delete']) {
+          return db.deletePlan(post['delete']).then(web.redirect('/plans'));
+        } else if (post.create) {
+          return (createPlan(post)).pipe(function(new_plan) {
+            return web.redirect(planUrl(new_plan));
+          });
+        } else {
+          plan_name = match[1] && web.uriToWord(match[1]);
+          m = db.get(queries.plans + orm.condition({
+            name: plan_name
+          })).pipeMaybe(nodam.failure('No plan with that name: ' + plan_name), function(plan) {
+            if (post.update) {
+              return updatePlan(post, plan);
+            } else if (post.addMeal) {
+              return addMealToPlan(post, plan);
+            } else if (post.removeMeal) {
+              return removeMealFromPlan(post, plan);
+            } else {
+              return nodam.failure('Invalid form submission.');
+            }
+          });
+          return m.then(web.redirect(match[0])).rescue(web.error403);
+        }
       });
     }
   };
