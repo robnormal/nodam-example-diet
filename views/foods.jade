@@ -1,44 +1,61 @@
-- title = 'Foods'
-doctype 5
-html
-  include _head
-  body
+extends layout
+
+block vars
+  - var title = 'Foods'
+
+block append head
+  style
+    td:nth-child(3), td:nth-child(3) input, td:nth-child(4), td:nth-child(4) input {
+      width: 4em;
+    }
+
+block body
+  form(action="/food", method="post")
+
     table
-      tr
-        th Food
-        th Type
-        th Cals/100g
-        th Weight in grams
-        th Ingredients
-        th
-      each food in foods
-        form(action="/food", method="post")
-          tr
-            td
-              input(type="text", name="food_name", value="#{food.name}")
-            td
-              select(name="food_type")
+      colgroup
+        col(span="3")
+        col(id="weight")
+      thead
+        tr
+          th Food
+          th Type
+          th Cals/100g
+          th Wt. (g)
+          th Ingredients
+          th
+      tbody
+        each food in foods
+            tr
+              td
+                input(type="text", name="food_name_#{food.id}", value="#{food.name}")
+              td
+                select(name="food_type_#{food.id}")
+                  if food.type === 'ingredient'
+                    option(selected) ingredient
+                    option dish
+                  else
+                    option ingredient
+                    option(selected) dish
+              td
                 if food.type === 'ingredient'
-                  option(selected) ingredient
-                  option dish
+                  input(type="text", name="food_cals_#{food.id}", value="#{food.cals}")
                 else
-                  option ingredient
-                  option(selected) dish
-            td
-              if food.type === 'ingredient'
-                input(type="text", name="food_cals", value="#{food.cals}")
-              else
-                | #{help.number(2, food.cals)}
-            td
-              if food.type === 'dish'
-                input(type="text", name="food_grams", value="#{food.grams || ''}")
-            td
-              if food.type === 'dish'
-                a(href="#{help.foodUrl(food)}") ingredients
-            td
-              button(name="update", value="#{food.id}") Save
-              button(name="delete", value="#{food.id}") X
-      form(action="/food", method="post")
+                  | #{help.number(2, food.cals)}
+              td(class="short")
+                if food.type === 'dish'
+                  input(type="text", name="food_grams_#{food.id}", value="#{food.grams || ''}")
+                else
+                  | -
+              td
+                if food.type === 'dish'
+                  a(href="#{help.foodUrl(food)}") ingredients
+                else
+                  | -
+              td
+                button(name="update", value="#{food.id}") Save
+                button(name="delete", value="#{food.id}") X
+
         tr
           td
             input(type="text", name="food_name")
@@ -50,6 +67,7 @@ html
             input(type="text", name="food_cals")
           td
             input(type="text", name="food_grams")
+          td
           td
             button(name="create", value="1") Save
 

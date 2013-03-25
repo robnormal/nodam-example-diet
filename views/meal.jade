@@ -1,55 +1,58 @@
-doctype 5
-html
-	head
-		title Foods in #{meal.name}
-		script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
-		script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
-		link(rel="stylesheet", href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css")
+extends layout
 
-		script
-			jQuery(function($) {
-				$('#food_name').autocomplete({
-					source: '/foodlist',
-					minLength: 1
-				});
-			});
+block vars
+  - var title = 'Foods in ' + meal.name
 
-	body
-		h1 Foods in #{meal.name}
+block append head
+  script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
+  script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
+  link(rel="stylesheet", href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css")
 
-		form(action="#{help.mealUrl(meal)}", method="post")
-			label(for="meal_name") Name:
-			input(type="text", name="meal_name", id="meal_name", value="#{meal.name}")
+  script
+    jQuery(function($) {
+      $('#food_name').autocomplete({
+        source: '/foodlist',
+        minLength: 1
+      });
+    });
 
-		table
-			tr
-				th Name
-				th Grams
-				th Calories
-				th 
-			each m_food in meal_foods
-				form(action="#{help.mealUrl(meal)}", method="post")
-					tr
-						td
-							if m_food.food.type === 'dish'
-								a(href="#{help.foodUrl(m_food.food)}") #{m_food.food.name}
-							else
-								| #{m_food.food.name}
-						td 
-							input(type="text", name="grams", value="#{m_food.grams}")
-						td #{help.number(2, m_food.cals)}
-						td 
-							button(name="update", value="#{m_food.food_id}") Save
-							button(name="delete", value="#{m_food.food_id}") X
-			form(action="#{help.mealUrl(meal)}", method="post")
-				tr
-					td
-						input(type="text", name="food_name", id="food_name")
-					td
-						input(type="text", name="grams")
-					td
-						button(name="create", value="1") Save
 
-		h3 Total calories:
-			strong #{help.number(2, meal.cals)}
+block body
+  h1= title
+
+  form(action="#{help.mealUrl(meal)}", method="post")
+    label(for="meal_name") Name:
+    input(type="text", name="meal_name", id="meal_name", value="#{meal.name}")
+
+  table
+    tr
+      th Name
+      th Grams
+      th Calories
+      th 
+    each m_food in meal_foods
+      form(action="#{help.mealUrl(meal)}", method="post")
+        tr
+          td
+            if m_food.food.type === 'dish'
+              a(href="#{help.foodUrl(m_food.food)}") #{m_food.food.name}
+            else
+              | #{m_food.food.name}
+          td 
+            input(type="text", name="grams", value="#{m_food.grams}")
+          td #{help.number(2, m_food.cals)}
+          td 
+            button(name="update", value="#{m_food.food_id}") Save
+            button(name="delete", value="#{m_food.food_id}") X
+    form(action="#{help.mealUrl(meal)}", method="post")
+      tr
+        td
+          input(type="text", name="food_name", id="food_name")
+        td
+          input(type="text", name="grams")
+        td
+          button(name="create", value="1") Save
+
+  h3 Total calories:
+    strong #{help.number(2, meal.cals)}
 

@@ -1,24 +1,24 @@
-doctype 5
-html
-	head
-		title Meal Plans
-	body
-		h1 Meal Plans
-		table
-			tr
-				th Plan
-				th
-			each plan in plans
-				form(action="/plan", method="post")
-					tr
-						td
-							a(href="#{help.planUrl(plan)}") #{plan.name}
-						td
-							button(name="delete", value="#{plan.id}") X
-			form(action="/plan", method="post")
-				tr
-					td
-						input(type="text", name="name", id="name")
-					td
-						button(name="create", value="1") New plan
+extends layout
+
+block vars
+  - var title = 'Meal Plans'
+
+block body
+  h1= title
+  form(action="/plan", method="post")
+    table
+      tr
+        th Plan
+        th
+      each plan in plans
+        tr
+          td
+            a(href="#{help.planUrl(plan)}") #{plan.name}
+          td
+            button(name="delete", value="#{plan.id}") X
+        tr
+          td
+            input(type="text", name="name", id="name")
+          td
+            button(name="create", value="1") New plan
 

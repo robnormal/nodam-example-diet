@@ -1,37 +1,43 @@
-doctype 5
-html
-  head
-    title #{plan.name}
-    style
-      h3 > button {
-        margin-left: 1em;
-      }
+extends layout
 
-  body
-    h1 #{plan.name}
-    h2 #{plan.cals.toFixed(0)} Calories
+block vars
+  - var title = plan.name
 
-    each pm in plan.p_meals
-      form(action="#{help.planUrl(plan)}", method="post")
-        h3
-          | <a href="#{help.mealUrl(pm.meal)}">#{pm.meal.name}</a> - #{pm.meal.cals.toFixed(0)} calories
-          button(name="removeMeal", value="#{pm.id}") Remove
+block append head
+  style
+    h3 > button {
+      margin-left: 1em;
+    }
 
-      form(action="#{help.mealUrl(pm.meal)}", method="post")
-        table
-          tr
-            th Name
-            th Grams
-            th
-          each m_food in pm.meal.foods
-            tr
-              td #{m_food.food.name}
-              td #{m_food.food.grams}
-              td
+block body
+  form(action="#{help.planUrl(plan)}", method="post")
+    h1
+      input(name="plan_name", value="#{plan.name}")
+      button(name="rename", value="#{plan.id}") Rename
 
+  h2 #{plan.cals.toFixed(0)} Calories
 
+  each pm in plan.p_meals
     form(action="#{help.planUrl(plan)}", method="post")
-      select(name="meal_name", id="meal_name")
-        each meal in all_meals
-          option #{meal.name}
-      button(name="addMeal", value="1") Add meal
+      h3
+        | <a href="#{help.mealUrl(pm.meal)}">#{pm.meal.name}</a> - #{pm.meal.cals.toFixed(0)} calories
+        button(name="removeMeal", value="#{pm.id}") Remove
+
+    form(action="#{help.mealUrl(pm.meal)}", method="post")
+      table
+        tr
+          th Name
+          th Grams
+          th
+        each m_food in pm.meal.foods
+          tr
+            td #{m_food.food.name}
+            td #{m_food.food.grams}
+            td
+
+
+  form(action="#{help.planUrl(plan)}", method="post")
+    select(name="meal_name", id="meal_name")
+      each meal in all_meals
+        option #{meal.name}
+    button(name="addMeal", value="1") Add meal

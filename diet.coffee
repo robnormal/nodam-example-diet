@@ -57,13 +57,17 @@ createFood = (post) ->
   )
 
 updateFood = (post) ->
-  db.runQuery(queries.foods_update,
-    name: post.food_name
-    type: post.food_type
-    cals: post.food_cals || ''
-    grams: post.food_grams || ''
-    id: post.update
-  )
+  food_id = post.update
+  if food_id
+    db.runQuery(queries.foods_update,
+      name: post['food_name_' + food_id]
+      type: post['food_type_' + food_id]
+      cals: post['food_cals_' + food_id] || ''
+      grams: post['food_grams_' + food_id] || ''
+      id: food_id
+    )
+  else
+    nodam.failure('No food exists with that ID.')
 
 deleteIngredient = (post, food) ->
   db.run('DELETE FROM ingredients ' + orm.condition(
@@ -346,20 +350,25 @@ actions = {
       else
         plan_name = match[1] && web.uriToWord(match[1])
 
-        m = db.get(queries.plans + orm.condition(name: plan_name)).pipeMaybe(
+        db.get(queries.plans + orm.condition(name: plan_name)).pipeMaybe(
           nodam.failure('No plan with that name: ' + plan_name),
           (plan) ->
-            if post.update
-              updatePlan(post, plan)
-            else if post.addMeal
-              addMealToPlan(post, plan)
-            else if post.removeMeal
-              removeMealFromPlan(post, plan)
-            else nodam.failure 'Invalid form submission.'
-        )
+            if post.rename && post.plan_name
+              db.renamePlan(plan, post.plan_name).pipe (plan1) ->
+                web.redirect(planUrl plan1)
+            else
+              m =
+                if post.update
+                  updatePlan(post, plan)
+                else if post.addMeal
+                  addMealToPlan(post, plan)
+                else if post.removeMeal
+                  removeMealFromPlan(post, plan)
+                else nodam.failure 'Invalid form submission.'
 
-        m.then(web.redirect(match[0]))
-          .rescue(web.error403)
+              m.then(web.redirect(match[0]))
+        ).rescue(web.error403)
+
 
   staticFile: (match) ->
     serveFile match[0]
@@ -394,17 +403,17 @@ serveFile = (file) ->
 
 
 routes = [
-  [ '/',                  { GET: actions.root }]
+  [ '/',                   { GET: actions.root }]
   [ /^\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }]
   [ /^\/food(\/?)$/,       { POST: actions.food }]
   [ /^\/meals(\/?)$/,      { GET: actions.meals }]
   [ /^\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }]
   [ /^\/meal(\/?)$/,       { POST: actions.manageMeals }]
-  [ /^\/plans(\/?)$/,       { GET: actions.plans }]
+  [ /^\/plans(\/?)$/,      { GET: actions.plans }]
   [ /^\/plan(\/?)$/,       { POST: actions.managePlan }]
   [ /^\/plan\/([\w\+-]+)/, { GET: actions.planMeals, POST: actions.managePlan }]
 
-  [ /^\/foodlist(\/?)\?term=(\w*)/,   { GET: actions.foodList }],
+  [ /^\/foodlist(\/?)\?term=(\w*)/, { GET: actions.foodList }],
   [ /^\/(assets\/.*)/, { GET: actions.staticFile } ]
 ]
 

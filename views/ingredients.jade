@@ -1,10 +1,16 @@
-doctype 5
-html
-  head
-    title #{food.name} Ingredients
-    script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
-    script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
-    link(rel="stylesheet", href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css")
+extends layout
+
+block vars
+  - var title = food.name + 'Ingredients'
+
+block append head
+  script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
+  script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
+  link(rel="stylesheet", type="text/css", href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css")
+  style
+    td:nth-child(2), td:nth-child(2) input {
+      width: 4em;
+    }
 
     script
       jQuery(function($) {
@@ -14,22 +20,22 @@ html
         });
       });
 
+block body
   body
     h1 Ingredients in #{food.name}
 
-    table
-      tr
-        th Name
-        th Grams
-        th 
-      each ingred in ingredients
+    form(action="#{food_url}", method="post")
+      table
         tr
-          td #{ingred.name}
-          td #{ingred.grams}
-          td 
-            form(action="#{food_url}", method="post")
+          th Name
+          th Grams
+          th 
+        each ingred in ingredients
+          tr
+            td #{ingred.name}
+            td #{ingred.grams}
+            td 
               button(name="delete", value="#{ingred.id}") X
-      form(action="#{food_url}", method="post")
         tr
           td
             input(type="text", name="ing_name", id="ing_name")

@@ -290,7 +290,7 @@ function calsFromIngredients(food) {
 
 	var total_cals = _.reduce(ings, function(memo, ing) {
 		return memo + ing.cals * ing.grams;
-	}, 0) / 100; 
+	}, 0) / 100;
 
 	return total_cals / food.grams * 100;
 }
@@ -350,6 +350,11 @@ function setPlanCals(plan) {
 		return memo + p_meal.meal.cals;
 	}, 0);
 	return _.set(plan, 'cals', cals);
+}
+
+function renamePlan(plan, name) {
+	return dbRun("UPDATE plans SET name='" + name + "' WHERE id=" + plan.id)
+		.then(nodam.result(_.set(plan, 'name', name)));
 }
 
 var allMeals = dbAll(queries.meals + ' ORDER BY created_at DESC');
@@ -479,26 +484,32 @@ module.exports = {
 
   queries:             queries,
 
+	allFoods:           allFoods,
 	getFood:            getFood,
 	foodByName:         foodByName,
+	deleteFood:         deleteFood,
+
+	ingredientsForFood: ingredientsForFood,
+	fillIngredients:    fillIngredients,
+	addIngredient:   addIngredient,
+	updateFoodCals:     updateFoodCals,
+
 	mealByName:         mealByName,
 	mealById:           mealById,
 	getMeal:            getMeal,
-	getMealFood:        getMealFood,
-	allFoods:           allFoods,
 	allMeals:           allMeals,
-	ingredientsForFood: ingredientsForFood,
-	fillIngredients:    fillIngredients,
-	fillMealFoods:      fillMealFoods,
-	getPlanMeals:       getPlanMeals,
-	addIngredient:   addIngredient,
-	updateFoodCals:     updateFoodCals,
 	updateMealName:     updateMealName,
 	setMealCals:        setMealCals,
-	setPlanCals:        setPlanCals,
-	deleteFood:         deleteFood,
+
+	getMealFood:        getMealFood,
+	fillMealFoods:      fillMealFoods,
 	deleteMealFood:     deleteMealFood,
+
+	renamePlan:         renamePlan,
+	setPlanCals:        setPlanCals,
 	deletePlan:         deletePlan,
+
+	getPlanMeals:       getPlanMeals,
 
 	toInt: toInt
 };
