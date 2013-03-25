@@ -17,27 +17,66 @@ block body
 
   h2 #{plan.cals.toFixed(0)} Calories
 
-  each pm in plan.p_meals
-    form(action="#{help.planUrl(plan)}", method="post")
-      h3
-        | <a href="#{help.mealUrl(pm.meal)}">#{pm.meal.name}</a> - #{pm.meal.cals.toFixed(0)} calories
-        button(name="removeMeal", value="#{pm.id}") Remove
+  div(id="plan_meals")
+    each pm, ord in plan.p_meals
+      div
+        form(action="#{help.planUrl(plan)}", method="post")
+          h3(class="plan_title")
+            span(class="handle") +
+            a(href="#{help.mealUrl(pm.meal)}") #{pm.meal.name}
+            button(class="blinds", type="button") v
+            | &nbsp;- #{pm.meal.cals.toFixed(0)} calories
+            button(name="removeMeal", value="#{pm.id}") Remove
 
-    form(action="#{help.mealUrl(pm.meal)}", method="post")
-      table
-        tr
-          th Name
-          th Grams
-          th
-        each m_food in pm.meal.foods
-          tr
-            td #{m_food.food.name}
-            td #{m_food.food.grams}
-            td
+        form(class="food_in_meal", action="#{help.mealUrl(pm.meal)}", method="post")
+          table
+            tr
+              th Name
+              th Grams
+              th
+                input(type="hidden", name="ordinals", value="#{pm.ordinal}")
+            each m_food in pm.meal.foods
+              tr
+                td #{m_food.food.name}
+                td #{m_food.food.grams}
+                td
 
+
+  div(id="drag_meals")
+    ul
+      each meal in all_meals
+        li(class="draggable") #{meal.name}
 
   form(action="#{help.planUrl(plan)}", method="post")
     select(name="meal_name", id="meal_name")
       each meal in all_meals
         option #{meal.name}
     button(name="addMeal", value="1") Add meal
+
+block append foot
+  script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
+  script
+    jQuery(function($) {
+      $('.draggable').draggable();
+      // $('.handle').up('form').draggable({ handle: '.handle'});
+      $('#plan_meals').sortable({
+        items: '> div',
+        handle: '.handle',
+        update: function(ev, ui) {
+          var
+            ordinals = $('#plan_meals input[name="ordinals"]'),
+            ords = $.map(ordinals, function(input) {
+              return input.value;
+            });
+
+          $.each(ordinals, function(i, input) {
+            input.value = i + 1;
+          });
+          $.post(document.url, { ords: ords, reorder: true });
+        }
+      });
+      $('.food_in_meal').hide();
+      $('h3.plan_title .blinds').click(function() {
+        $(this).up('form').next('.food_in_meal').toggle();
+      });
+    });

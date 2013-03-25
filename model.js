@@ -162,7 +162,7 @@ var queries = {
 	plan_meals:
 		'SELECT * FROM plan_meals',
 	plan_meals_with_meals:
-		'SELECT pm.id, pm.plan_id, pm.meal_id, m.name FROM plan_meals pm ' +
+		'SELECT pm.id, pm.plan_id, pm.meal_id, pm.ordinal, m.name FROM plan_meals pm ' +
 		'JOIN meals m ON m.id=pm.meal_id',
 	plan_meals_insert:
 		'INSERT INTO plan_meals (plan_id, meal_id) ' +
@@ -189,7 +189,7 @@ function hydrateRow(types, row, keys) {
 	_.each(keys, function(k) {
 		if (row[k]) {
 			if (types.k === INT) {
-				obj[k] = parseInt(row[k], 10);
+				obj[k] = toInt(row[k]);
 			} else if (types.k === FLOAT) {
 				obj[k] = parseFloat(row[k]);
 			} else {
@@ -362,11 +362,12 @@ var allMeals = dbAll(queries.meals + ' ORDER BY created_at DESC');
 function getPlanMeals(plan) {
 	return dbAll(queries.plan_meals_with_meals + orm.condition({
 		plan_id: plan.id
-	})).mmap(function(rows) {
+	}) + ' ORDER BY ordinal').mmap(function(rows) {
 		return _.map(rows, function(row) {
 			return {
-				id: parseInt(row.id, 10),
-				plan_id: parseInt(row.plan_id, 10),
+				id: toInt(row.id),
+				plan_id: toInt(row.plan_id),
+				ordinal: toInt(row.ordinal),
 				meal: {
 					id: row.meal_id,
 					name: row.name
@@ -458,6 +459,24 @@ function addIngredient(food, ing_name, grams) {
 		}
 	);
 }
+                  
+function reorderPlanMeals(plan, ords) {
+	return dbRun(
+		'UPDATE plan_meals SET ordinal = ordinal + 1000' +
+		orm.condition({ plan_id: plan.id })
+	).then(
+		nodam.Async.mapM(ords, function(old_ord, new_ord) {
+			console.log(
+				'UPDATE plan_meals SET ordinal = ' + (new_ord + 1) +
+				orm.condition({ plan_id: plan.id, ordinal: old_ord + 1000 })
+			);
+			return dbRun(
+				'UPDATE plan_meals SET ordinal = ' + (new_ord + 1) +
+				orm.condition({ plan_id: plan.id, ordinal: old_ord + 1000 })
+			);
+		})
+	);
+}
 
 module.exports = {
   dbM: dbM,
@@ -510,6 +529,7 @@ module.exports = {
 	deletePlan:         deletePlan,
 
 	getPlanMeals:       getPlanMeals,
+	reorderPlanMeals:   reorderPlanMeals,
 
 	toInt: toInt
 };

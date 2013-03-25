@@ -24,7 +24,7 @@ util.inherits(WebFailure, nodam.AsyncFailure)
 
 webFailure = (statusCode, text) ->
   nodam.get('response').pipe (resp) ->
-    resp.status = statusCode
+    resp.writeHead(statusCode)
     resp.write text
     resp.end()
 
@@ -45,7 +45,17 @@ getPost = nodam.get('request').pipe (req) ->
 
     new nodam.Async((apass) ->
       req.on('end', ->
-        apass.success(E.right(qs.parse(postData)), apass.state)
+        parsed = qs.parse(postData)
+
+        reParsed = _.reduce(parsed, (memo, val, key) ->
+          newKey = key.replace(/\[\]$/, '')
+          if newKey
+            memo[newKey] = val
+
+          memo
+        , {})
+
+        apass.success(E.right(reParsed), apass.state)
       )
     )
   else

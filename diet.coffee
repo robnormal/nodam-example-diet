@@ -20,7 +20,7 @@ fs = nodam.fs()
 M  = nodam.Maybe
 Async = nodam.Async
 
-nodam.debug true
+# nodam.debug true
 
 GET = 'GET'
 POST = 'POST'
@@ -151,6 +151,8 @@ removeMealFromPlan = (post, plan) ->
   else
     nodam.failure 'Invalid form submission.'
 
+reorderPlanMeals = (post, plan) ->
+  db.reorderPlanMeals(plan, _.map(post.ords, toInt))
 
 
 getLatestMeal = db.get(queries.meals + orm.condition(
@@ -331,10 +333,8 @@ actions = {
         else nodam.failure('Invalid form submission.')
 
       newPlan.pipe((plan) ->
-        console.log('plan:', plan)
         web.redirect(planUrl plan)
       ).rescue((msg) ->
-        console.log('msg:', msg)
         web.error403(msg)
       )
     )
@@ -356,6 +356,9 @@ actions = {
             if post.rename && post.plan_name
               db.renamePlan(plan, post.plan_name).pipe (plan1) ->
                 web.redirect(planUrl plan1)
+            else if post.reorder
+              reorderPlanMeals(post, plan)
+                .then(web.success 'OK')
             else
               m =
                 if post.update
@@ -368,7 +371,6 @@ actions = {
 
               m.then(web.redirect(match[0]))
         ).rescue(web.error403)
-
 
   staticFile: (match) ->
     serveFile match[0]
@@ -385,21 +387,21 @@ mimeTypes = {
 
 path = require('path')
 serveFile = (file) ->
-  mimeType = mimeTypes[path.extname(file).split('.')[1]]
+  mime = mimeTypes[path.extname(file).substr(1)]
   filepath = __dirname + '/' + file
 
-  nodam.get('response').pipe (res) ->
-    res.writeHead(200, mimeType || 'text/plain')
-
+  nodam.get('response').pipe (resp) ->
     fileStream = fs.createReadStream(filepath)
 
     Async.listen(fileStream, 'error', (err) ->
-      res.status = 404
-      res.write 'File not found.'
+      resp.status = 404
+      resp.write 'File not found.'
 
-      nodam.failure(res.end())
+      nodam.failure(resp.end())
     ).pipe () ->
-      nodam.result(fileStream.pipe res)
+      resp.status = 200
+      resp.setHeader('Content-Type', mime)
+      nodam.result(fileStream.pipe resp)
 
 
 routes = [
@@ -421,7 +423,7 @@ routes = [
 require('http').createServer((request, response) ->
   web.routeRequest(request, routes).or(web.error404)
     .run(
-      _.inert,
+      (_.inert),
       ((err) ->
         if (err instanceof Error)
           web.showMonadErr err
