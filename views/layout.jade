@@ -1,0 +1,151 @@
+doctype 5
+block vars
+html
+  head
+    block head
+      title= title
+      style
+        * {
+          font-weight: normal;
+          font-family: sans-serif;
+          text-align: left;
+        }
+        body {
+          width: 100%;
+          /* font-size: 110%; */
+        }
+
+        .hidden {
+          display: none;
+        }
+
+        #dumb {
+          display: table;
+          margin: 0 auto;
+        }
+
+        ul {
+          list-style: none;
+        }
+
+        a {
+          text-decoration: none;
+        }
+
+        a:hover {
+          text-decoration: underline;
+        }
+
+        input, button, textarea, select {
+          padding: 2px 6px;
+          font: inherit;
+        }
+
+        button {
+          margin-right: 1em;
+        }
+
+        table, th, td {
+          border-collapse: collapse;
+        }
+
+        td, th {
+          padding: 0.1ex 0.4em;
+          margin: 0;
+        }
+
+        .hnav {
+          width: auto;
+          display: table;
+          margin: 1ex auto;
+          padding: 0;
+          font-size: 1.4em;
+        }
+
+        .hnav ul {
+          list-style: none;
+          text-align: center;
+          display: table-row;
+        }
+
+        .hnav li {
+          display: table-cell;
+          padding: 2ex 0;
+          margin: 0 1em;
+        }
+
+        .hnav li a {
+          padding: 1ex 1em;
+          margin: 0 1em;
+        }
+
+        .hnav li a {
+          border: 2px solid #035E03;
+        }
+
+        .hnav li a:hover {
+          text-decoration: none;
+            border-color: #6B9D6B;
+        }
+
+        body {
+          background-color: #bbbbbb;
+        }
+
+        .draggable, .handle {
+          cursor: move;
+        }
+        .handle {
+          font-weight: bold;
+          background-color: black;
+          color: white;
+          padding: 0 0.4em;
+          margin-right: 0.4em;
+        }
+        /*
+          body {
+            background-color: #1D321D;
+            color: #73A473;
+          }
+
+          a, a:visited {
+            color: #447788;
+          }
+
+          input, button, textarea, select {
+            background-color: #052405;
+            color: #7CC47C;
+            border: #035E03 solid 2px;
+          }
+
+          .hnav li a {
+            border: 2px solid #035E03;
+          }
+
+          .hnav li a:hover, button:hover {
+            border-color: #6B9D6B;
+          }
+
+          input:focus, input::-moz-focus-inner,
+          select:focus, select::-moz-focus-inner,
+          option:focus, option::-moz-focus-inner {
+            border: dotted 1px #035E03;
+          }
+        */
+
+  body
+    div(id="dumb")
+      div(class="hnav")
+        ul
+          li
+            a(href="/") Foods
+          li
+            a(href="/meals") Meals
+          li
+            a(href="/plans") Plans
+
+      block body
+    
+    block foot
+      script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
+      script(src="/assets/site.js")

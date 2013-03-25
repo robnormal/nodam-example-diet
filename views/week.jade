@@ -1,0 +1,29 @@
+extends layout
+
+block vars
+  - var title = week.name
+
+block append head
+  style
+    h3 > button {
+      margin-left: 1em;
+    }
+
+block body
+  form(action="#{help.weekUrl(week)}", method="post")
+    h1
+      input(name="week_name", value="#{week.name}")
+      button(name="rename", value="#{week.id}") Rename
+
+    div(id="week_plans")
+      - days = ['Sun','Mon','Tue','Wed', 'Thu','Fri','Sat']
+      each day, i in days
+        - wp = week_plans[i]
+        - ord = wp && wp.ord || i
+        div
+          label #{day}:
+            select(name='plans')
+              each plan in all_plans
+                option(value=plan.id, selected=plan.id == (wp && wp.plan_id))= plan.name
+
+    button(name="update", value="1") Update week

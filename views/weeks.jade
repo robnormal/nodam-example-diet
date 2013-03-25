@@ -1,0 +1,26 @@
+extends layout
+
+block vars
+  - var title = 'Weeks'
+
+block body
+  h1= title
+  form(action="/week", method="post")
+    table
+      thead
+        tr
+          th Week
+          th
+      tbody
+        each week in weeks
+          tr
+            td
+              a(href="#{help.weekUrl(week)}") #{week.name}
+            td
+              button(name="delete", value="#{week.id}") X
+        tr
+          td
+            input(type="text", name="name", id="name")
+          td
+            button(name="create", value="1") New week
+
