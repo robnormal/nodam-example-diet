@@ -281,19 +281,23 @@ function mealByName(name) {
 	return dbGet(query);
 }
 
+function foodIngredients(food) {
+	if (food.type !== 'dish') {
+		return Async.result([]);
+	} else {
+		return dbAll(
+			queries.ingredients_with_foods + orm.condition({ 'i.food_id': food.id })
+		);
+	}
+}
+
 /**
  * results in the food, not the ingredients
  */
 function fillIngredients(food) {
-	if (food.type !== 'dish' || food.ingredients) {
-		return Async.result(food);
-	} else {
-		return dbAll(
-			queries.ingredients_with_foods + orm.condition({ 'i.food_id': food.id })
-		) .pipe(function (ings) {
-			return Async.result(_.set(food, 'ingredients', ings));
-		});
-	}
+	foodIngredients(food).pipe(function (ings) {
+		return Async.result(_.set(food, 'ingredients', ings));
+	});
 }
 
 // Food -> Double
@@ -414,14 +418,48 @@ function deleteFood(id) {
 		.then(dbRun('DELETE FROM meal_foods ' + orm.condition({ food_id: id })));
 }
 
-function fillMealFoods(meal) {
+function getFoodsInMeal(meal) {
 	return dbAll(queries.meal_foods_with_foods + orm.condition({
 		meal_id: meal.id
-	})).mmap(function(rows) {
-		return _.fmap(hydrateMealFood, rows);
-	}).pipe(function(meal_foods) {
-		var meal2 = _.set(meal, 'foods', meal_foods);
-		return Async.result(setMealCals(meal2));
+	})).mmapFmap(hydrateMealFood);
+}
+
+function fillMealFoods(meal) {
+	return getFoodsInMeal(meal)
+		.pipe(function(meal_foods) {
+			var meal2 = _.set(meal, 'foods', meal_foods);
+
+			return Async.result(setMealCals(meal2));
+		});
+}
+
+function mealIngredients(meal) {
+	return getFoodsInMeal(meal).pipe(function(m_foods) {
+		return Async.mapM(m_foods, function(m_food) {
+			var food = m_food.food;
+
+			if (food.type === 'ingredient') {
+				return Async.result([ { food: food, grams: m_food.grams } ]);
+			} else {
+				return foodIngredients(food).mmapFmap(function(ingred) {
+					return { food: ingred, grams: m_food.grams * ingred.grams / food.grams };
+				});
+			}
+		}).mmap(function(amounts) {
+			// ammounts = [ { food: food, grams: number }, ...]
+			var totals = {};
+			_.each(amounts, function(amount) {
+				var food_id = amount.food.id;
+
+				if (totals[food_id]) {
+					totals[food_id].grams += amount.grams;
+				} else {
+					totals[food_id] = amount;
+				}
+			});
+
+			return totals;
+		});
 	});
 }
 
@@ -535,7 +573,7 @@ module.exports = {
 	dbM: dbM,
 	DBMissingFailure: DBMissingFailure,
 	DBEmptyFailure: DBEmptyFailure,
-	
+
 	runQuery: runQuery,
 	get:      dbGet,
 	all:      dbAll,
@@ -547,45 +585,46 @@ module.exports = {
 	reduceQ:  dbReduceQ,
 	close:    dbClose,
 	getOrFail: dbGetOrFail,
-	
+
 	hydrateRow:          hydrateRow,
 	hydrateCommon:       hydrateCommon,
 	hydrateCommonAll:    hydrateCommonAll,
 	hydrateIngredient:   hydrateIngredient,
 	hydrateMealFood:     hydrateMealFood,
-	
+
 	queries:             queries,
-	
+
 	allFoods:           allFoods,
 	getFood:            getFood,
 	foodByName:         foodByName,
 	deleteFood:         deleteFood,
-	
+
 	ingredientsForFood: ingredientsForFood,
 	fillIngredients:    fillIngredients,
 	addIngredient:   addIngredient,
 	updateFoodCals:     updateFoodCals,
-	
+
 	mealByName:         mealByName,
 	mealById:           mealById,
 	getMeal:            getMeal,
 	allMeals:           allMeals,
 	updateMealName:     updateMealName,
 	setMealCals:        setMealCals,
-	
+
 	getMealFood:        getMealFood,
 	fillMealFoods:      fillMealFoods,
 	deleteMealFood:     deleteMealFood,
-	
+	mealIngredients:    mealIngredients,
+
 	renamePlan:         renamePlan,
 	setPlanCals:        setPlanCals,
 	deletePlan:         deletePlan,
-	
+
 	getPlanMeals:       getPlanMeals,
 	reorderPlanMeals:   reorderPlanMeals,
 	getWeekPlans:       getWeekPlans,
 	setWeekPlan:        setWeekPlan,
-	
+
 	deleteWeek:         deleteWeek,
 	toInt: toInt
 };
