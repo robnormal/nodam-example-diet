@@ -4,17 +4,7 @@ block vars
   - var title = 'Foods in ' + meal.name
 
 block append head
-  script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
-  script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
   link(rel="stylesheet", href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css")
-
-  script
-    jQuery(function($) {
-      $('#food_name').autocomplete({
-        source: '/foodlist',
-        minLength: 1
-      });
-    });
 
 
 block body
@@ -56,3 +46,12 @@ block body
   h3 Total calories:
     strong #{help.number(2, meal.cals)}
 
+block append foot
+  script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
+  script
+    jQuery(function($) {
+      $('#food_name').autocomplete({
+        source: '/foodlist',
+        minLength: 1
+      });
+    });
