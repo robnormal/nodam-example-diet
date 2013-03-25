@@ -35,10 +35,12 @@ toInt = db.toInt
 foodUrl = (food) -> '/food/' + web.wordToUri(food.name)
 mealUrl = (meal) -> '/meal/' + meal.id
 planUrl = (plan) -> '/plan/' + web.wordToUri(plan.name)
+weekUrl = (week) -> '/week/' + web.wordToUri(week.name)
 
 web.helper.foodUrl = foodUrl
 web.helper.mealUrl = mealUrl
 web.helper.planUrl = planUrl
+web.helper.weekUrl = weekUrl
 
 apology = 'Sorry, there was a problem with your request.'
 
@@ -142,6 +144,7 @@ addMealToPlan = (post, plan) ->
       db.runQuery(queries.plan_meals_insert,
         plan_id: plan.id
         meal_id: meal.id
+        ordinal: post.ord
       )
   )
 
@@ -158,6 +161,29 @@ reorderPlanMeals = (post, plan) ->
 getLatestMeal = db.get(queries.meals + orm.condition(
   id: orm.literal('last_insert_rowid()')
 ))
+
+createWeek = (post) ->
+  if post.name
+    db.runQuery(queries.weeks_insert, { name: post.name })
+      .then(
+        db.getOrFail(queries.weeks + orm.condition(
+          id: orm.literal('last_insert_rowid()')
+        ))
+      )
+  else
+    nodam.failure 'Invalid form submission.'
+
+getMatchedWeek = (match) ->
+  unless match[1]
+    return nodam.failure()
+
+  plan_name = match[1] && web.uriToWord(match[1])
+  db.get(db.queries.weeks + orm.condition(name: plan_name))
+
+updateWeek = (post, week) ->
+  Async.mapM(post.plans, (plan_id, i) ->
+    db.setWeekPlan(week, i+1, toInt(plan_id))
+  )
 
 actions = {
   root: (match) ->
@@ -227,13 +253,6 @@ actions = {
     db.allMeals.pipe (meals) ->
       Async.mapM(meals, db.fillMealFoods).pipe (fmeals) ->
         web.showView('meals', meals: fmeals)
-      ###
-      if meals
-        Async.mapM(meals, db.fillMealFoods).pipe (fmeals) ->
-          web.showView('meals', meals: fmeals)
-      else
-        web.showView('meals', meals: [])
-        ###
 
   manageMeals: (match) ->
     nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
@@ -325,20 +344,6 @@ actions = {
             )
     )
 
-  createPlan: (match) ->
-    nodam.combineStrict([dbM, web.getPost]).pipeArray((db_obj, post) ->
-      newPlan =
-        if post.create
-          createPlan(post)
-        else nodam.failure('Invalid form submission.')
-
-      newPlan.pipe((plan) ->
-        web.redirect(planUrl plan)
-      ).rescue((msg) ->
-        web.error403(msg)
-      )
-    )
-
   managePlan: (match) ->
     nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
       if post['delete']
@@ -371,6 +376,71 @@ actions = {
 
               m.then(web.redirect(match[0]))
         ).rescue(web.error403)
+
+  weeks: (match) ->
+    db.all(queries.weeks).pipe (weeks) ->
+      web.showView('weeks', weeks: weeks)
+
+  week: (match) ->
+    getMatchedWeek(match).pipeMaybe(
+      web.error404,
+      (week) ->
+        db.getWeekPlans(week).pipe (w_plans) ->
+          db.all(queries.plans).pipe (all_plans) ->
+            web.showView('week', {
+              week_plans: w_plans
+              all_plans: all_plans
+              week: week
+            })
+    )
+
+  manageWeek: (match) ->
+    nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
+      if post['delete']
+        db.deleteWeek(post['delete'])
+          .then(web.redirect '/weeks')
+      else if post.create
+        (createWeek post).pipe (new_week) ->
+          web.redirect(weekUrl new_week)
+      else
+        week_name = match[1] && web.uriToWord(match[1])
+
+        db.get(queries.weeks + orm.condition(name: week_name)).pipeMaybe(
+          nodam.failure('No week with that name: ' + week_name),
+          (week) ->
+            if post.rename && post.week_name
+              db.renameWeek(week, post.week_name).pipe (week1) ->
+                web.redirect(weekUrl week1)
+            else if post.update
+              updateWeek(post, week)
+                .then(web.redirect(match[0]))
+            else
+              nodam.failure 'Invalid form submission.'
+        ).rescue(web.error403)
+
+
+  weekUpdate: (match) ->
+    nodam.combineStrict([dbM, web.getPost]).pipeArray (db_obj, post) ->
+      db.setWeekPlan(
+        toInt(post.week_id),
+        toInt(post.ord),
+        toInt(post.plan_id)
+      ).then(redirect(match[0]))
+        .rescue(web.error403)
+
+  createWeek: (match) ->
+    nodam.combineStrict([dbM, web.getPost]).pipeArray((db_obj, post) ->
+      newWeek =
+        if post.create
+          createWeek(post)
+        else nodam.failure('Invalid form submission.')
+
+      newWeek.pipe((week) ->
+        web.redirect(weekUrl week)
+      ).rescue((msg) ->
+        web.error403(msg)
+      )
+    )
 
   staticFile: (match) ->
     serveFile match[0]
@@ -414,6 +484,9 @@ routes = [
   [ /^\/plans(\/?)$/,      { GET: actions.plans }]
   [ /^\/plan(\/?)$/,       { POST: actions.managePlan }]
   [ /^\/plan\/([\w\+-]+)/, { GET: actions.planMeals, POST: actions.managePlan }]
+  [ /^\/weeks(\/?)$/,      { GET: actions.weeks }]
+  [ /^\/week(\/?)$/,       { POST: actions.manageWeek }]
+  [ /^\/week\/([\w\+-]+)/, { GET: actions.week, POST: actions.manageWeek }]
 
   [ /^\/foodlist(\/?)\?term=(\w*)/, { GET: actions.foodList }],
   [ /^\/(assets\/.*)/, { GET: actions.staticFile } ]

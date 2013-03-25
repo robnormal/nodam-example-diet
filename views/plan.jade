@@ -42,12 +42,8 @@ block body
                 td
 
 
-  div(id="drag_meals")
-    ul
-      each meal in all_meals
-        li(class="draggable") #{meal.name}
-
   form(action="#{help.planUrl(plan)}", method="post")
+    input(type="hidden", name="ord", value=plan.p_meals.length + 1)
     select(name="meal_name", id="meal_name")
       each meal in all_meals
         option #{meal.name}
@@ -57,8 +53,6 @@ block append foot
   script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
   script
     jQuery(function($) {
-      $('.draggable').draggable();
-      // $('.handle').up('form').draggable({ handle: '.handle'});
       $('#plan_meals').sortable({
         items: '> div',
         handle: '.handle',

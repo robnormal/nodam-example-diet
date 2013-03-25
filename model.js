@@ -165,8 +165,20 @@ var queries = {
 		'SELECT pm.id, pm.plan_id, pm.meal_id, pm.ordinal, m.name FROM plan_meals pm ' +
 		'JOIN meals m ON m.id=pm.meal_id',
 	plan_meals_insert:
-		'INSERT INTO plan_meals (plan_id, meal_id) ' +
-			'VALUES (<%= plan_id %>, <%= meal_id %>)'
+		'INSERT INTO plan_meals (plan_id, meal_id, ordinal) ' +
+			'VALUES (<%= plan_id %>, <%= meal_id %>, <%= ordinal %>)',
+	weeks:
+		'SELECT * from weeks',
+	weeks_insert:
+		"INSERT INTO weeks (name) VALUES ('<%= name %>')",
+	week_plans:
+		'SELECT * FROM week_plans',
+	week_plans_with_plans:
+		'SELECT wp.id, wp.week_id, wp.plan_id, wp.ordinal, p.name FROM week_plans wp ' +
+		'JOIN plans p ON p.id=wp.plan_id',
+	set_week_plan:
+		'INSERT OR REPLACE INTO week_plans (week_id, plan_id, ordinal) ' +
+		'VALUES (<%= week_id %>, <%= plan_id %>, <%= ordinal %>)'
 };
 
 function setMealFoodCals(m_food) {
@@ -377,6 +389,25 @@ function getPlanMeals(plan) {
 	});
 }
 
+function getWeekPlans(week) {
+	return dbAll(queries.week_plans_with_plans + orm.condition({
+		week_id: week.id
+	}) + ' ORDER BY ordinal').mmap(function(rows) {
+		return _.map(rows, function(row) {
+			return {
+				id: toInt(row.id),
+				plan_id: toInt(row.plan_id),
+				ordinal: toInt(row.ordinal),
+				plan: {
+					id: row.plan_id,
+					name: row.name
+				}
+			};
+		});
+	});
+}
+
+
 function deleteFood(id) {
   return dbRun('DELETE FROM foods ' + orm.condition({ id: id }))
 		.then(dbRun('DELETE FROM ingredients ' + orm.condition({ food_id: id })))
@@ -421,6 +452,11 @@ function deleteMeal(id) {
 function deletePlan(id) {
 	return dbRun('DELETE FROM plans ' + orm.condition({ id: id }))
 		.then(dbRun('DELETE FROM plan_meals ' + orm.condition({ plan_id: id })));
+}
+
+function deleteWeek(id) {
+	return dbRun('DELETE FROM weeks ' + orm.condition({ id: id }))
+		.then(dbRun('DELETE FROM week_plans ' + orm.condition({ week_id: id })));
 }
 
 function getIngredient(food_id, ing_id) {
@@ -478,11 +514,28 @@ function reorderPlanMeals(plan, ords) {
 	);
 }
 
-module.exports = {
-  dbM: dbM,
-  DBMissingFailure: DBMissingFailure,
-  DBEmptyFailure: DBEmptyFailure,
+function setWeekPlan(week, ord, plan_id) {
+	if (! week.id || typeof week.id !== 'number') {
+		return nodam.failure('Invalid week: ' + week);
+	} else if (! plan_id || typeof plan_id !== 'number') {
+		return nodam.failure('Invalid plan: ' + plan_id);
+	} else if (! ord || typeof ord !== 'number') {
+		return nodam.failure('Invalid ordinal: ' + ord);
+	}
 
+  return dbRunQ(queries.set_week_plan, {
+		week_id: week.id,
+		plan_id: plan_id,
+		ordinal: ord
+	});
+}
+
+module.exports = {
+	getDB: getDB,
+	dbM: dbM,
+	DBMissingFailure: DBMissingFailure,
+	DBEmptyFailure: DBEmptyFailure,
+	
 	runQuery: runQuery,
 	get:      dbGet,
 	all:      dbAll,
@@ -494,42 +547,45 @@ module.exports = {
 	reduceQ:  dbReduceQ,
 	close:    dbClose,
 	getOrFail: dbGetOrFail,
-
+	
 	hydrateRow:          hydrateRow,
 	hydrateCommon:       hydrateCommon,
 	hydrateCommonAll:    hydrateCommonAll,
-  hydrateIngredient:   hydrateIngredient,
-  hydrateMealFood:     hydrateMealFood,
-
-  queries:             queries,
-
+	hydrateIngredient:   hydrateIngredient,
+	hydrateMealFood:     hydrateMealFood,
+	
+	queries:             queries,
+	
 	allFoods:           allFoods,
 	getFood:            getFood,
 	foodByName:         foodByName,
 	deleteFood:         deleteFood,
-
+	
 	ingredientsForFood: ingredientsForFood,
 	fillIngredients:    fillIngredients,
 	addIngredient:   addIngredient,
 	updateFoodCals:     updateFoodCals,
-
+	
 	mealByName:         mealByName,
 	mealById:           mealById,
 	getMeal:            getMeal,
 	allMeals:           allMeals,
 	updateMealName:     updateMealName,
 	setMealCals:        setMealCals,
-
+	
 	getMealFood:        getMealFood,
 	fillMealFoods:      fillMealFoods,
 	deleteMealFood:     deleteMealFood,
-
+	
 	renamePlan:         renamePlan,
 	setPlanCals:        setPlanCals,
 	deletePlan:         deletePlan,
-
+	
 	getPlanMeals:       getPlanMeals,
 	reorderPlanMeals:   reorderPlanMeals,
-
+	getWeekPlans:       getWeekPlans,
+	setWeekPlan:        setWeekPlan,
+	
+	deleteWeek:         deleteWeek,
 	toInt: toInt
 };
