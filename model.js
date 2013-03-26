@@ -295,7 +295,7 @@ function foodIngredients(food) {
  * results in the food, not the ingredients
  */
 function fillIngredients(food) {
-	foodIngredients(food).pipe(function (ings) {
+	return foodIngredients(food).pipe(function (ings) {
 		return Async.result(_.set(food, 'ingredients', ings));
 	});
 }
@@ -433,34 +433,52 @@ function fillMealFoods(meal) {
 		});
 }
 
+// ammounts = [ { food_id: { food: food, grams: number }, ...},  ...]
+function addAmounts(amounts) {
+	console.log('amounts:',amounts);
+	var totals = {};
+
+	_.each(amounts, function(amount) {
+		_.each(amount, function(part, food_id) {
+			if (totals[food_id]) {
+				totals[food_id].grams += part.grams;
+			} else {
+				totals[food_id] = part;
+			}
+		});
+	});
+
+	return totals;
+}
+
 function mealIngredients(meal) {
 	return getFoodsInMeal(meal).pipe(function(m_foods) {
 		return Async.mapM(m_foods, function(m_food) {
 			var food = m_food.food;
+			var amount = {};
 
 			if (food.type === 'ingredient') {
-				return Async.result([ { food: food, grams: m_food.grams } ]);
+				amount[food.id] = { food: food, grams: m_food.grams };
+
+				return Async.result([amount]);
 			} else {
-				return foodIngredients(food).mmapFmap(function(ingred) {
-					return { food: ingred, grams: m_food.grams * ingred.grams / food.grams };
+				return foodIngredients(food).mmap(function(ingreds) {
+					_.each(ingreds, function(ingred) {
+						amount[ingred.id] = { food: ingred, grams: m_food.grams * ingred.grams / food.grams };
+					});
+					return amount;
 				});
 			}
-		}).mmap(function(amounts) {
-			// ammounts = [ { food: food, grams: number }, ...]
-			var totals = {};
-			_.each(amounts, function(amount) {
-				var food_id = amount.food.id;
-
-				if (totals[food_id]) {
-					totals[food_id].grams += amount.grams;
-				} else {
-					totals[food_id] = amount;
-				}
-			});
-
-			return totals;
-		});
+		}).mmap(addAmounts);
 	});
+}
+
+function planIngredients(plan) {
+	return getPlanMeals(plan)
+		.pipeMmap(function(p_meal) {
+			return mealIngredients(p_meal.meal);
+		})
+		.mmap(addAmounts);
 }
 
 function deleteMealFood(meal, food_id) {
@@ -540,10 +558,6 @@ function reorderPlanMeals(plan, ords) {
 		orm.condition({ plan_id: plan.id })
 	).then(
 		nodam.Async.mapM(ords, function(old_ord, new_ord) {
-			console.log(
-				'UPDATE plan_meals SET ordinal = ' + (new_ord + 1) +
-				orm.condition({ plan_id: plan.id, ordinal: old_ord + 1000 })
-			);
 			return dbRun(
 				'UPDATE plan_meals SET ordinal = ' + (new_ord + 1) +
 				orm.condition({ plan_id: plan.id, ordinal: old_ord + 1000 })
@@ -619,9 +633,11 @@ module.exports = {
 	renamePlan:         renamePlan,
 	setPlanCals:        setPlanCals,
 	deletePlan:         deletePlan,
+	planIngredients:    planIngredients,
 
 	getPlanMeals:       getPlanMeals,
 	reorderPlanMeals:   reorderPlanMeals,
+
 	getWeekPlans:       getWeekPlans,
 	setWeekPlan:        setWeekPlan,
 
