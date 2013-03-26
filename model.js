@@ -253,11 +253,13 @@ function hydrateMealFood(row) {
 }
 
 function getFood(id) {
-	return dbGet(queries.foods + orm.condition({id: id})).mmap(hydrateFood);
+	return dbGet(queries.foods + orm.condition({id: id}))
+		.mmapFmap(hydrateFood);
 }
 
 function getMeal(id) {
-	return dbGet(queries.meals + orm.condition({id: id})).mmap(hydrateMeal);
+	return dbGet(queries.meals + orm.condition({id: id}))
+		.mmapFmap(hydrateMeal);
 }
 
 function getMealFood(meal_id, food_id) {
@@ -466,10 +468,15 @@ function mealIngredients(meal) {
 				return Async.result([amount]);
 			} else {
 				return foodIngredients(food).mmap(function(ingreds) {
+					var total_in = _.reduce(ingreds, function(memo, ing) {
+						return memo + ing.grams;
+					}, 0);
+
 					_.each(ingreds, function(ingred) {
+
 						amount[ingred.id] = {
 							food: ingred,
-							grams: m_food.grams * ingred.grams / food.grams
+							grams: m_food.grams * ingred.grams / total_in
 						};
 					});
 					return amount;

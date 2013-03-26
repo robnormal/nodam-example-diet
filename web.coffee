@@ -80,8 +80,8 @@ success = (text) ->
     resp.statusCode = 200
     nodam.result display(resp, text).end()
 
-wordToUri = (word) -> word.replace RegExp(' ', 'g'), '+'
-uriToWord = (word) -> word.replace /\+/g, ' '
+wordToUri = (word) -> encodeURIComponent(word).replace(RegExp('%20', 'g'), '+')
+uriToWord = (word) -> decodeURIComponent word.replace(/\+/g, '%20')
 
 matchUrl = (regexOrString, url) ->
   if regexOrString instanceof RegExp

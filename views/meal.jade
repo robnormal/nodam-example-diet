@@ -45,6 +45,17 @@ block body
 
   h3 Total calories:
     strong #{help.number(2, meal.cals)}
+ 
+  table(id="ingredients")
+    thead
+      tr
+        th Food
+        th Grams/meal
+    tbody
+      each ing in ingredients
+        tr
+          td= ing.food.name
+          td= ing.grams.toFixed(0)
 
 block append foot
   script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")

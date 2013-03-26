@@ -68,12 +68,17 @@ updateFood = (post) ->
 
     if post['food_cals_' + food_id]
       data.cals = post['food_cals_' + food_id]
-
-      db.runQuery(queries.foods_update_w_cals, data)
+      templ = queries.foods_update_w_cals
     else if post['food_grams_' + food_id]
       data.grams = post['food_grams_' + food_id]
+      templ = queries.foods_update_w_grams
 
-      db.runQuery(queries.foods_update_w_grams, data)
+    db.runQuery(templ, data)
+      .then(db.getFood(food_id))
+      .pipeMaybe(
+        nodam.failure('An unknown error occured.'),
+        db.updateFoodCals
+      )
 
   else
     nodam.failure('No food exists with that ID.')
@@ -285,7 +290,12 @@ actions = {
 
     db.mealById(match[1]).pipeMaybe(web.error404, (meal) ->
       db.fillMealFoods(meal).pipe (mealFilled) ->
-        web.showView('meal', { meal_foods: mealFilled.foods, meal: mealFilled })
+        db.mealIngredients(meal).pipe (ingreds) ->
+          web.showView('meal', {
+            meal_foods: mealFilled.foods
+            meal: mealFilled
+            ingredients: ingreds
+          })
     )
 
   mealFoods: (match) ->
@@ -487,17 +497,17 @@ serveFile = (file) ->
 
 routes = [
   [ '/',                   { GET: actions.root }]
-  [ /^\/food\/([\w\+-]+)/, { GET: actions.ingredients, POST: actions.manageIngredients }]
+  [ /^\/food\/(.+)/,       { GET: actions.ingredients, POST: actions.manageIngredients }]
   [ /^\/food(\/?)$/,       { POST: actions.food }]
   [ /^\/meals(\/?)$/,      { GET: actions.meals }]
   [ /^\/meal\/(\d+)/,      { GET: actions.meal, POST: actions.mealFoods }]
   [ /^\/meal(\/?)$/,       { POST: actions.manageMeals }]
   [ /^\/plans(\/?)$/,      { GET: actions.plans }]
   [ /^\/plan(\/?)$/,       { POST: actions.managePlan }]
-  [ /^\/plan\/([\w\+-]+)/, { GET: actions.planMeals, POST: actions.managePlan }]
+  [ /^\/plan\/(.+)/,       { GET: actions.planMeals, POST: actions.managePlan }]
   [ /^\/weeks(\/?)$/,      { GET: actions.weeks }]
   [ /^\/week(\/?)$/,       { POST: actions.manageWeek }]
-  [ /^\/week\/([\w\+-]+)/, { GET: actions.week, POST: actions.manageWeek }]
+  [ /^\/week\/(.+)/,       { GET: actions.week, POST: actions.manageWeek }]
 
   [ /^\/foodlist(\/?)\?term=(\w*)/, { GET: actions.foodList }],
   [ /^\/(assets\/.*)/, { GET: actions.staticFile } ]

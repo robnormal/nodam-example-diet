@@ -28,7 +28,7 @@ block body
 
     button(name="update", value="1") Update week
 
-  table
+  table(id="ingredients")
     thead
       tr
         th Food
@@ -37,4 +37,22 @@ block body
       each ing in ingredients
         tr
           td= ing.food.name
-          td= ing.grams
+          td= ing.grams.toFixed(0)
+
+block append foot
+  script(src="/assets/jquery.tinysort.js")
+  script
+    jQuery(function($) {
+      $('#ingredients th').first().click(function() {
+        var table = $(this).up('table');
+        var trs = table.find('tr');
+
+        if (table.data('sort_asc')) {
+          table.data('sort_asc', false);
+          trs.tsort('td:eq(0)', { order: 'desc' });
+        } else {
+          table.data('sort_asc', true);
+          trs.tsort('td:eq(0)');
+        }
+      });
+    });
