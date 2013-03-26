@@ -12,6 +12,10 @@ jQuery(function($) {
 		return it;
 	};
 
+	$('[name="delete"]').click(function() {
+		return confirm('Are you sure you want to delete this?');
+	});
+
 	$('th:contains("Grams"), th:contains("grams")').click(function() {
 		var
 			$this = $(this),

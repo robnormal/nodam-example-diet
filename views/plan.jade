@@ -49,6 +49,17 @@ block body
         option #{meal.name}
     button(name="addMeal", value="1") Add meal
 
+  table
+    thead
+      tr
+        th Food
+        th Grams/day
+    tbody
+      each ing in ingredients
+        tr
+          td= ing.food.name
+          td= ing.grams
+
 block append foot
   script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
   script

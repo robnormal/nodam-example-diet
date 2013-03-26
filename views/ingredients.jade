@@ -4,21 +4,11 @@ block vars
   - var title = food.name + 'Ingredients'
 
 block append head
-  script(src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js")
-  script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
   link(rel="stylesheet", type="text/css", href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css")
   style
     td:nth-child(2), td:nth-child(2) input {
       width: 4em;
     }
-
-    script
-      jQuery(function($) {
-        $('#ing_name').autocomplete({
-          source: '/foodlist',
-          minLength: 1
-        });
-      });
 
 block body
   body
@@ -44,3 +34,12 @@ block body
           td
             button(name="create", value="1") Save
 
+block append foot
+  script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")
+  script
+    jQuery(function($) {
+      $('#ing_name').autocomplete({
+        source: '/foodlist',
+        minLength: 1
+      });
+    });

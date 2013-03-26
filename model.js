@@ -435,7 +435,6 @@ function fillMealFoods(meal) {
 
 // ammounts = [ { food_id: { food: food, grams: number }, ...},  ...]
 function addAmounts(amounts) {
-	console.log('amounts:',amounts);
 	var totals = {};
 
 	_.each(amounts, function(amount) {
@@ -582,6 +581,14 @@ function setWeekPlan(week, ord, plan_id) {
 	});
 }
 
+function weekIngredients(week) {
+  return getWeekPlans(week)
+		.pipeMmap(function(w_plan) {
+			return planIngredients(w_plan.plan);
+		})
+		.mmap(addAmounts);
+}
+
 module.exports = {
 	getDB: getDB,
 	dbM: dbM,
@@ -638,9 +645,11 @@ module.exports = {
 	getPlanMeals:       getPlanMeals,
 	reorderPlanMeals:   reorderPlanMeals,
 
+	weekIngredients:    weekIngredients,
+	deleteWeek:         deleteWeek,
+
 	getWeekPlans:       getWeekPlans,
 	setWeekPlan:        setWeekPlan,
 
-	deleteWeek:         deleteWeek,
 	toInt: toInt
 };

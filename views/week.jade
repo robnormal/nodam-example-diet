@@ -27,3 +27,14 @@ block body
                 option(value=plan.id, selected=plan.id == (wp && wp.plan_id))= plan.name
 
     button(name="update", value="1") Update week
+
+  table
+    thead
+      tr
+        th Food
+        th Grams/wk
+    tbody
+      each ing in ingredients
+        tr
+          td= ing.food.name
+          td= ing.grams

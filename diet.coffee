@@ -278,9 +278,7 @@ actions = {
 
     db.mealById(match[1]).pipeMaybe(web.error404, (meal) ->
       db.fillMealFoods(meal).pipe (mealFilled) ->
-        db.mealIngredients(meal).mmap(console.log).then(
-          web.showView('meal', { meal_foods: mealFilled.foods, meal: mealFilled })
-        )
+        web.showView('meal', { meal_foods: mealFilled.foods, meal: mealFilled })
     )
 
   mealFoods: (match) ->
@@ -332,7 +330,6 @@ actions = {
     ).pipeMaybe(
       web.error403('No plan "' + plan_name + '" exists.'),
       (plan) ->
-        db.planIngredients(plan).mmap(console.log).then(
           db.getPlanMeals(plan).pipeMmap( (p_meal) ->
             db.fillMealFoods(p_meal.meal).mmap( (meal) ->
               _.set(p_meal, 'meal', meal)
@@ -341,11 +338,12 @@ actions = {
             planFilled = _.set(plan, 'p_meals', planMealsFilled)
 
             db.allMeals.pipe (all_meals) ->
-              web.showView('plan',
-                plan: db.setPlanCals(planFilled)
-                all_meals: all_meals
-              )
-        )
+              db.planIngredients(plan).pipe (ingreds) ->
+                web.showView('plan',
+                  plan: db.setPlanCals(planFilled)
+                  all_meals: all_meals
+                  ingredients: ingreds
+                )
     )
 
   managePlan: (match) ->
@@ -390,12 +388,14 @@ actions = {
       web.error404,
       (week) ->
         db.getWeekPlans(week).pipe (w_plans) ->
-          db.all(queries.plans).pipe (all_plans) ->
-            web.showView('week', {
-              week_plans: w_plans
-              all_plans: all_plans
-              week: week
-            })
+          db.weekIngredients(week).pipe (ingredients) ->
+            db.all(queries.plans).pipe (all_plans) ->
+              web.showView('week', {
+                week_plans: w_plans
+                all_plans: all_plans
+                week: week
+                ingredients: ingredients
+              })
     )
 
   manageWeek: (match) ->
