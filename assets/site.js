@@ -16,6 +16,16 @@ jQuery(function($) {
 		return confirm('Are you sure you want to delete this?');
 	});
 
+	$('form tr').on('keydown', 'input[type="text"]', function(ev) {
+		// fix annoying table-form behavior
+		var code = (ev.keyCode ? ev.keyCode : ev.which);
+
+		if (code == 13) {
+			$(this).up('tr').find('button').first().click();
+			return ev.preventDefault();
+		}
+	});
+
 	$('th:contains("Grams"), th:contains("grams")').click(function() {
 		var
 			$this = $(this),

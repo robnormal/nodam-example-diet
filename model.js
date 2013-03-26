@@ -119,9 +119,13 @@ var queries = {
 	foods_insert:
 		'INSERT INTO foods (name, type, cals, grams) ' +
 		"VALUES ('<%= name %>', '<%= type %>', '<%= cals %>', '<%= grams %>')",
-	foods_update:
+	foods_update_w_cals:
 		'UPDATE foods ' +
-		"SET name='<%= name %>', type='<%= type %>', cals='<%= cals %>', grams='<%= grams %>' " +
+		"SET name='<%= name %>', type='<%= type %>', cals='<%= cals %>' " +
+		'WHERE id=<%= id %>',
+	foods_update_w_grams:
+		'UPDATE foods ' +
+		"SET name='<%= name %>', type='<%= type %>', grams='<%= grams %>' " +
 		'WHERE id=<%= id %>',
 	ingredients:
 		'SELECT * from ingredients',
@@ -463,7 +467,10 @@ function mealIngredients(meal) {
 			} else {
 				return foodIngredients(food).mmap(function(ingreds) {
 					_.each(ingreds, function(ingred) {
-						amount[ingred.id] = { food: ingred, grams: m_food.grams * ingred.grams / food.grams };
+						amount[ingred.id] = {
+							food: ingred,
+							grams: m_food.grams * ingred.grams / food.grams
+						};
 					});
 					return amount;
 				});

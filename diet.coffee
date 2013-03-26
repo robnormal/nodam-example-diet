@@ -61,13 +61,20 @@ createFood = (post) ->
 updateFood = (post) ->
   food_id = post.update
   if food_id
-    db.runQuery(queries.foods_update,
+    data =
       name: post['food_name_' + food_id]
       type: post['food_type_' + food_id]
-      cals: post['food_cals_' + food_id] || ''
-      grams: post['food_grams_' + food_id] || ''
       id: food_id
-    )
+
+    if post['food_cals_' + food_id]
+      data.cals = post['food_cals_' + food_id]
+
+      db.runQuery(queries.foods_update_w_cals, data)
+    else if post['food_grams_' + food_id]
+      data.grams = post['food_grams_' + food_id]
+
+      db.runQuery(queries.foods_update_w_grams, data)
+
   else
     nodam.failure('No food exists with that ID.')
 
