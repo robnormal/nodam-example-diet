@@ -37,8 +37,8 @@ block body
                 input(type="hidden", name="ordinals", value="#{pm.ordinal}")
             each m_food in pm.meal.foods
               tr
-                td #{m_food.food.name}
-                td #{m_food.food.grams}
+                td= m_food.food.name
+                td= m_food.food.grams
                 td
 
 
@@ -58,7 +58,7 @@ block body
       each ing in ingredients
         tr
           td= ing.food.name
-          td= ing.grams
+          td= help.number(2, ing.grams)
 
 block append foot
   script(src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js")

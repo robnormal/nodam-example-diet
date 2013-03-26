@@ -94,20 +94,21 @@ routeRequest = (request, routes) ->
   method = request.method
   len = routes.length
 
-  i = 0
-  while i < len
+  i = -1; while ++i < len
     match = matchUrl(routes[i][0], url)
     if match
       action = routes[i][1] && routes[i][1][method]
       if action
         return M.just(action(match))
-    i++
   M.nothing
 
 helper =
   number: (digits, num) ->
-    strs = (num + '').split('.')
-    strs[0] + (if strs[1] then '.' + strs[1].slice(0, digits) else '')
+    mult = 1
+    i = -1; while ++i < digits
+      mult = mult * 10
+
+    Math.round(num * mult) / mult
 
 getView = (view, data) ->
   getJade('views/' + view + '.jade', _.set(data, 'help', helper))

@@ -13,6 +13,7 @@ orm   = require './lib/orm.js'
 db    = require './model.js'
 web   = require './web.coffee'
 
+util  = require 'util'
 qs    = require 'querystring'
 jade  = require 'jade'
 
@@ -46,9 +47,11 @@ apology = 'Sorry, there was a problem with your request.'
 
 # for now, do nothing here
 logError = (err) ->
-  console.log(err)
-  console.log(err.stack)
-  nodam.result()
+  log = err.toString() + '\n' + err.stack + '\n'
+  if err.args
+    log += util.inspect(err.args) + '\n'
+
+  fs.appendFile('errors.log', log)
 
 createFood = (post) ->
   db.runQuery(queries.foods_insert,
@@ -129,6 +132,9 @@ createMealFood = (meal, post) ->
     )
 
 updateMealFood = (meal, post) ->
+  unless post.grams
+    return nodam.failure 'Invalid form submission.'
+
   db.runQuery(queries.meal_foods_update,
     meal_id: meal.id
     food_id: post.update
@@ -320,8 +326,9 @@ actions = {
       )
 
       changes.then(web.redirect match[0])
-        .rescue (err) ->
-          logError(err).then(web.error403 err)
+        .rescueOnly(Error, (err) ->
+          logError(err).then(nodam.failure 'There was a problem with your request')
+        ).rescue web.error403
 
   foodList: (match) ->
     term = match[2]

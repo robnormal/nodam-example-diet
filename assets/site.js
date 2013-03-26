@@ -45,6 +45,16 @@ jQuery(function($) {
 			lb: 2
 		};
 
+		var toDigits = function(digs, n) {
+			var mult = 1, i = 0;
+
+			for(; i < digs; i++) {
+				mult *= 10;
+			}
+
+			return Math.round(n * mult) / mult;
+		};
+
 		var unitChange = function(a, b) {
 			return function(_, td) {
 				var
@@ -68,7 +78,7 @@ jQuery(function($) {
 						if (toHtml) {
 							$td.html(toHtml);
 						} else {
-							var bnew = bnum.toFixed(digits[b]);
+							var bnew = toDigits(digits[b], bnum);
 
 							if (input.length) {
 								input.attr('value', bnum).attr('name', input.attr('name') + b);
