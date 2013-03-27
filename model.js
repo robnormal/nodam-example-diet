@@ -136,7 +136,7 @@ function hydrateCommon(row, keys) {
 	return hydrateRow(columnTypes, row, keys);
 }
 
-var hydrateFood = hydrateCommon;
+// var hydrateFood = hydrateCommon;
 var hydrateMeal = hydrateCommon;
 
 function hydrateIngredient(row) {
@@ -155,12 +155,12 @@ function hydrateMealFood(row) {
 
 function getFood(id) {
 	return orm.dbGet(queries.foods + orm.condition({id: id}))
-		.mmapFmap(hydrateFood);
+		.mmapFmap(orm.Food.hydrate);
 }
 
 function getMeal(id) {
 	return orm.dbGet(queries.meals + orm.condition({id: id}))
-		.mmapFmap(hydrateMeal);
+		.mmapFmap(orm.Meal.hydrate);
 }
 
 function getMealFood(meal_id, food_id) {
@@ -169,23 +169,19 @@ function getMealFood(meal_id, food_id) {
 	return orm.dbGet(
 		queries.meal_foods +
 		orm.condition({meal_id: meal_id, food_id: food_id})
-	) .mmapFmap(function(row) {
-		return {
-			meal_id: orm.toInt(row.meal_id),
-			food_id: orm.toInt(row.food_id),
-			grams:   orm.toInt(row.grams || 0)
-		};
-	});
+	).mmapFmap(orm.MealFood.hydrate);
 }
 
 function foodByName(name) {
 	var query = queries.foods + orm.condition({name: name});
-	return orm.dbGet(query);
+	return orm.dbGet(query).mmapFmap(orm.Food.hydrate);
 }
 
 function mealByName(name) {
 	var query = queries.meals + orm.condition({name: name});
-	return orm.dbGet(query);
+
+	return orm.dbGet(query)
+		.mmapFmap(orm.Meal.hydrate);
 }
 
 function foodIngredients(food) {
@@ -255,11 +251,7 @@ function ingredientsForFood(food) {
 }
 
 var allFoods = orm.dbAll(queries.foods + ' ORDER BY name')
-	.pipe(function(foods) {
-		return Async.sequence(
-			_.fmap(ingredientsForFood, foods)
-		)
-	});
+	.pipeMapM(ingredientsForFood);
 
 function setMealCals(meal) {
 	var cals = _.reduce(meal.foods, function(memo, m_food) {
@@ -389,7 +381,7 @@ function mealIngredients(meal) {
 
 function planIngredients(plan) {
 	return getPlanMeals(plan)
-		.pipeMmap(function(p_meal) {
+		.pipeMapM(function(p_meal) {
 			return mealIngredients(p_meal.meal);
 		})
 		.mmap(addAmounts);
@@ -498,7 +490,7 @@ function setWeekPlan(week, ord, plan_id) {
 
 function weekIngredients(week) {
   return getWeekPlans(week)
-		.pipeMmap(function(w_plan) {
+		.pipeMapM(function(w_plan) {
 			return planIngredients(w_plan.plan);
 		})
 		.mmap(addAmounts);
@@ -537,13 +529,14 @@ module.exports = {
 
 	ingredientsForFood: ingredientsForFood,
 	fillIngredients:    fillIngredients,
-	addIngredient:   addIngredient,
+	addIngredient:      addIngredient,
 	updateFoodCals:     updateFoodCals,
 
 	mealByName:         mealByName,
 	mealById:           mealById,
 	getMeal:            getMeal,
 	allMeals:           allMeals,
+	deleteMeal:         deleteMeal,
 	updateMealName:     updateMealName,
 	setMealCals:        setMealCals,
 

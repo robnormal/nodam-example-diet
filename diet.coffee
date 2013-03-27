@@ -9,7 +9,7 @@ nodam = require '../nodam/lib/nodam.js'
 sql   = require '../nodam/lib/sqlite.js'
 R     = require '../nodam/lib/restriction.js'
 
-orm   = require './lib/orm.js'
+orm   = require './lib/orm2.js'
 db    = require './model.js'
 web   = require './web.coffee'
 
@@ -21,7 +21,7 @@ fs = nodam.fs()
 M  = nodam.Maybe
 Async = nodam.Async
 
-# nodam.debug true
+nodam.debug true
 
 GET = 'GET'
 POST = 'POST'
@@ -205,8 +205,8 @@ updateWeek = (post, week) ->
 
 actions = {
   root: (match) ->
-    db.allFoods.pipe (rows) ->
-      web.showView('foods', foods: rows)
+    orm.foodsWithIngredients({}, { order_by: 'foods.name' }).pipe (foods) ->
+      web.showView('foods', foods: foods)
 
   food: (match) ->
     changes = web.getPost.pipe (post) ->
@@ -354,7 +354,7 @@ actions = {
     ).pipeMaybe(
       web.error403('No plan "' + plan_name + '" exists.'),
       (plan) ->
-          db.getPlanMeals(plan).pipeMmap( (p_meal) ->
+          db.getPlanMeals(plan).pipeMapM( (p_meal) ->
             db.fillMealFoods(p_meal.meal).mmap( (meal) ->
               _.set(p_meal, 'meal', meal)
             )
@@ -401,7 +401,9 @@ actions = {
                 else nodam.failure 'Invalid form submission.'
 
               m.then(web.redirect(match[0]))
-        ).rescue(web.error403)
+        ).rescueOnly(Error, (err) ->
+          logError(err).then(nodam.failure 'There was a problem with your request')
+        ).rescue web.error403
 
   weeks: (match) ->
     db.all(queries.weeks).pipe (weeks) ->
