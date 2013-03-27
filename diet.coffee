@@ -21,7 +21,7 @@ fs = nodam.fs()
 M  = nodam.Maybe
 Async = nodam.Async
 
-nodam.debug true
+# nodam.debug true
 
 GET = 'GET'
 POST = 'POST'
@@ -31,7 +31,8 @@ DELETE = 'DELETE'
 dbM = db.dbM
 queries = db.queries
 fmap = _.flip(_.map)
-toInt = db.toInt
+toInt = orm.toInt
+
 
 foodUrl = (food) -> '/food/' + web.wordToUri(food.name)
 mealUrl = (meal) -> '/meal/' + meal.id
@@ -54,7 +55,7 @@ logError = (err) ->
   fs.appendFile('errors.log', log)
 
 createFood = (post) ->
-  db.runQuery(queries.foods_insert,
+  orm.runQuery(queries.foods_insert,
     name: post.food_name
     type: post.food_type
     cals: post.food_cals || ''
@@ -76,8 +77,8 @@ updateFood = (post) ->
       data.grams = post['food_grams_' + food_id]
       templ = queries.foods_update_w_grams
 
-    db.runQuery(templ, data)
-      .then(db.getFood(food_id))
+    orm.runQuery(templ, data)
+      .then(Food.get({id: food_id}))
       .pipeMaybe(
         nodam.failure('An unknown error occured.'),
         db.updateFoodCals
@@ -87,7 +88,7 @@ updateFood = (post) ->
     nodam.failure('No food exists with that ID.')
 
 deleteIngredient = (post, food) ->
-  db.run('DELETE FROM ingredients ' + orm.condition(
+  orm.run('DELETE FROM ingredients ' + orm.condition(
     food_id: food.id
     ingredient_id: post['delete']
   )).then(db.updateFoodCals(food))
@@ -99,7 +100,7 @@ addIngredient = (post, food) ->
       web.error403('No ingredient called "' + post.ing_name + '" was found.')
 
 updateIngredient = (post, food) ->
-  db.runQuery(queries.ingredients_update,
+  orm.runQuery(queries.ingredients_update,
     food_id: post.food_id
     grams: post.grams
     ingred_id: post.update
@@ -117,13 +118,13 @@ createMealFood = (meal, post) ->
         # if meal food exists, add the grams of the new entry to that
         db.getMealFood(meal.id, food.id).pipe( (m_meal_food) ->
           if m_meal_food.isNothing()
-            db.runQuery(queries.meal_foods_insert,
+            orm.runQuery(queries.meal_foods_insert,
               meal_id: meal.id
               food_id: food.id
               grams: post_grams
             )
           else
-            db.runQuery(queries.meal_foods_update,
+            orm.runQuery(queries.meal_foods_update,
               meal_id: meal.id
               food_id: food.id
               grams: m_meal_food.fromJust().grams + post_grams
@@ -135,7 +136,7 @@ updateMealFood = (meal, post) ->
   unless post.grams
     return nodam.failure 'Invalid form submission.'
 
-  db.runQuery(queries.meal_foods_update,
+  orm.runQuery(queries.meal_foods_update,
     meal_id: meal.id
     food_id: post.update
     grams: post.grams
@@ -143,7 +144,7 @@ updateMealFood = (meal, post) ->
 
 createPlan = (post) ->
   if post.name
-    db.runQuery(queries.plans_insert, { name: post.name })
+    orm.runQuery(queries.plans_insert, { name: post.name })
       .then(
         db.getOrFail(queries.plans + orm.condition(
           id: orm.literal('last_insert_rowid()')
@@ -159,7 +160,7 @@ addMealToPlan = (post, plan) ->
   db.mealByName(post.meal_name).pipeMaybe(
     nodam.failure('No meal exists by that name'),
     (meal) ->
-      db.runQuery(queries.plan_meals_insert,
+      orm.runQuery(queries.plan_meals_insert,
         plan_id: plan.id
         meal_id: meal.id
         ordinal: post.ord
@@ -182,7 +183,7 @@ getLatestMeal = db.get(queries.meals + orm.condition(
 
 createWeek = (post) ->
   if post.name
-    db.runQuery(queries.weeks_insert, { name: post.name })
+    orm.runQuery(queries.weeks_insert, { name: post.name })
       .then(
         db.getOrFail(queries.weeks + orm.condition(
           id: orm.literal('last_insert_rowid()')
@@ -268,7 +269,7 @@ actions = {
 
 
   meals: (match) ->
-    orm.Meal.find().pipe (meals) ->
+    allMeals.pipe (meals) ->
       Async.mapM(meals, orm.fillMealFoods).pipe (fmeals) ->
         web.showView('meals', meals: fmeals)
 
@@ -355,8 +356,8 @@ actions = {
       web.error403('No plan "' + plan_name + '" exists.'),
       (plan) ->
         orm.planWithFoods(plan).pipe (plan) ->
-          db.allMeals.pipe (all_meals) ->
-            db.planIngredients(plan).pipe (ingreds) ->
+          orm.allMeals.pipe (all_meals) ->
+            orm.planIngredients(plan).pipe (ingreds) ->
               web.showView('plan',
                 plan: db.setPlanCals(plan)
                 all_meals: all_meals
@@ -520,7 +521,11 @@ routes = [
 require('http').createServer((request, response) ->
   web.routeRequest(request, routes).or(web.error404)
     .run(
-      (_.inert),
+      # (_.inert),
+      (->
+        console.log(nodam.Async.query_count)
+        nodam.Async.query_count = 0
+      ),
       ((err) ->
         if (err instanceof Error)
           web.showMonadErr err

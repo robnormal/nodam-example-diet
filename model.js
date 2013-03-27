@@ -154,19 +154,19 @@ function hydrateMealFood(row) {
 }
 
 function getFood(id) {
-	return orm.dbGet(queries.foods + orm.condition({id: id}))
+	return orm.get(queries.foods + orm.condition({id: id}))
 		.mmapFmap(orm.Food.hydrate);
 }
 
 function getMeal(id) {
-	return orm.dbGet(queries.meals + orm.condition({id: id}))
+	return orm.get(queries.meals + orm.condition({id: id}))
 		.mmapFmap(orm.Meal.hydrate);
 }
 
 function getMealFood(meal_id, food_id) {
 	if (!meal_id || !food_id) throw new R.CheckError();
 
-	return orm.dbGet(
+	return orm.get(
 		queries.meal_foods +
 		orm.condition({meal_id: meal_id, food_id: food_id})
 	).mmapFmap(orm.MealFood.hydrate);
@@ -174,13 +174,13 @@ function getMealFood(meal_id, food_id) {
 
 function foodByName(name) {
 	var query = queries.foods + orm.condition({name: name});
-	return orm.dbGet(query).mmapFmap(orm.Food.hydrate);
+	return orm.get(query).mmapFmap(orm.Food.hydrate);
 }
 
 function mealByName(name) {
 	var query = queries.meals + orm.condition({name: name});
 
-	return orm.dbGet(query)
+	return orm.get(query)
 		.mmapFmap(orm.Meal.hydrate);
 }
 
@@ -192,7 +192,7 @@ function foodIngredients(food) {
 	if (food.type !== 'dish') {
 		return Async.result([]);
 	} else {
-		return orm.dbAll(
+		return orm.all(
 			queries.ingredients_with_foods + orm.condition({ 'i.food_id': food.id })
 		);
 	}
@@ -225,7 +225,7 @@ function updateFoodCals(food) {
 		return fillIngredients(food)
 			.mmap(calsFromIngredients)
 			.pipe(function(cals) {
-				return orm.dbRunQ(
+				return orm.runQ(
 					queries.food_update_cals,
 					{ cals: cals, id: food.id }
 				) .then(Async.result(
@@ -240,7 +240,7 @@ function ingredientsForFood(food) {
 	if (food.type === 'ingredient') {
 		return Async.result(food);
 	} else {
-		return orm.dbAll(
+		return orm.all(
 			queries.ingredients_with_foods +
 				orm.condition({ food_id: food.id }) +
 				' ORDER BY i.grams DESC'
@@ -254,7 +254,7 @@ function ingredientsForFood(food) {
 	}
 }
 
-var allFoods = orm.dbAll(queries.foods + ' ORDER BY name')
+var allFoods = orm.all(queries.foods + ' ORDER BY name')
 	.pipeMapM(ingredientsForFood);
 
 function setMealCals(meal) {
@@ -272,23 +272,12 @@ function setPlanCals(plan) {
 }
 
 function renamePlan(plan, name) {
-	return orm.dbRun("UPDATE plans SET name='" + name + "' WHERE id=" + plan.id)
+	return orm.run("UPDATE plans SET name='" + name + "' WHERE id=" + plan.id)
 		.then(nodam.result(_.set(plan, 'name', name)));
 }
 
-var allMeals = orm.dbAll(queries.meals + ' ORDER BY created_at DESC');
-
-function getPlanMeals(plan) {
-	return orm.PlanMeal.find({ plan_id: plan.id }, { order_by: 'ordinal' })
-		.pipeMapM(function(p_meal) {
-			return orm.Meal.get({ id: p_meal.meal_id }).mmapFmap(function(meal) {
-					return p_meal.setMeal(meal);
-				});
-		}).mmap(M.Maybe.concat);
-}
-
 function getWeekPlans(week) {
-	return orm.dbAll(queries.week_plans_with_plans + orm.condition({
+	return orm.all(queries.week_plans_with_plans + orm.condition({
 		week_id: week.id
 	}) + ' ORDER BY ordinal').mmap(function(rows) {
 		return _.map(rows, function(row) {
@@ -307,9 +296,9 @@ function getWeekPlans(week) {
 
 
 function deleteFood(id) {
-  return orm.dbRun('DELETE FROM foods ' + orm.condition({ id: id }))
-		.then(orm.dbRun('DELETE FROM ingredients ' + orm.condition({ food_id: id })))
-		.then(orm.dbRun('DELETE FROM meal_foods ' + orm.condition({ food_id: id })));
+  return orm.run('DELETE FROM foods ' + orm.condition({ id: id }))
+		.then(orm.run('DELETE FROM ingredients ' + orm.condition({ food_id: id })))
+		.then(orm.run('DELETE FROM meal_foods ' + orm.condition({ food_id: id })));
 }
 
 // ammounts = [ { food_id: { food: food, grams: number }, ...},  ...]
@@ -329,50 +318,42 @@ function addAmounts(amounts) {
 	return totals;
 }
 
-function planIngredients(plan) {
-	return getPlanMeals(plan)
-		.pipeMapM(function(p_meal) {
-			return orm.mealIngredients(p_meal.meal);
-		})
-		.mmap(addAmounts);
-}
-
 function deleteMealFood(meal, food_id) {
-	return orm.dbRun('DELETE FROM meal_foods ' + orm.condition({
+	return orm.run('DELETE FROM meal_foods ' + orm.condition({
 		meal_id: meal.id,
 		food_id: food_id
 	}));
 }
 
 function updateMealName(meal, name) {
-	return orm.dbRun(
+	return orm.run(
 		"UPDATE meals SET name='" + name + "' WHERE id=" + meal.id
 	);
 }
 
 function mealById(id) {
-	return orm.dbGet(queries.meals + orm.condition({ id: id }));
+	return orm.get(queries.meals + orm.condition({ id: id }));
 }
 
         
 function deleteMeal(id) {
-	return orm.dbRun('DELETE FROM meals ' + orm.condition({ id: id }))
-		.then(orm.dbRun('DELETE FROM meal_foods ' + orm.condition({ meal_id: id })))
-		.then(orm.dbRun('DELETE FROM plan_meals ' + orm.condition({ meal_id: id })));
+	return orm.run('DELETE FROM meals ' + orm.condition({ id: id }))
+		.then(orm.run('DELETE FROM meal_foods ' + orm.condition({ meal_id: id })))
+		.then(orm.run('DELETE FROM plan_meals ' + orm.condition({ meal_id: id })));
 }
 
 function deletePlan(id) {
-	return orm.dbRun('DELETE FROM plans ' + orm.condition({ id: id }))
-		.then(orm.dbRun('DELETE FROM plan_meals ' + orm.condition({ plan_id: id })));
+	return orm.run('DELETE FROM plans ' + orm.condition({ id: id }))
+		.then(orm.run('DELETE FROM plan_meals ' + orm.condition({ plan_id: id })));
 }
 
 function deleteWeek(id) {
-	return orm.dbRun('DELETE FROM weeks ' + orm.condition({ id: id }))
-		.then(orm.dbRun('DELETE FROM week_plans ' + orm.condition({ week_id: id })));
+	return orm.run('DELETE FROM weeks ' + orm.condition({ id: id }))
+		.then(orm.run('DELETE FROM week_plans ' + orm.condition({ week_id: id })));
 }
 
 function getIngredient(food_id, ing_id) {
-	return orm.dbGet(queries.ingredients + orm.condition({
+	return orm.get(queries.ingredients + orm.condition({
 		food_id: food_id,
 		ingredient_id: ing_id
 	}));
@@ -409,12 +390,12 @@ function addIngredient(food, ing_name, grams) {
 }
                   
 function reorderPlanMeals(plan, ords) {
-	return orm.dbRun(
+	return orm.run(
 		'UPDATE plan_meals SET ordinal = ordinal + 1000' +
 		orm.condition({ plan_id: plan.id })
 	).then(
 		nodam.Async.mapM(ords, function(old_ord, new_ord) {
-			return orm.dbRun(
+			return orm.run(
 				'UPDATE plan_meals SET ordinal = ' + (new_ord + 1) +
 				orm.condition({ plan_id: plan.id, ordinal: old_ord + 1000 })
 			);
@@ -431,7 +412,7 @@ function setWeekPlan(week, ord, plan_id) {
 		return nodam.failure('Invalid ordinal: ' + ord);
 	}
 
-  return orm.dbRunQ(queries.set_week_plan, {
+  return orm.run(queries.set_week_plan, {
 		week_id: week.id,
 		plan_id: plan_id,
 		ordinal: ord
@@ -441,7 +422,7 @@ function setWeekPlan(week, ord, plan_id) {
 function weekIngredients(week) {
   return getWeekPlans(week)
 		.pipeMapM(function(w_plan) {
-			return planIngredients(w_plan.plan);
+			return orm.planIngredients(w_plan.plan);
 		})
 		.mmap(addAmounts);
 }
@@ -453,16 +434,16 @@ module.exports = {
 	DBEmptyFailure: orm.DBEmptyFailure,
 
 	runQuery: orm.runQuery,
-	get:      orm.dbGet,
-	all:      orm.dbAll,
-	run:      orm.dbRun,
-	reduce:   orm.dbReduce,
-	getQ:     orm.dbGetQ,
-	allQ:     orm.dbAllQ,
-	runQ:     orm.dbRunQ,
-	reduceQ:  orm.dbReduceQ,
-	close:    orm.dbClose,
-	getOrFail: orm.dbGetOrFail,
+	get:      orm.get,
+	all:      orm.all,
+	run:      orm.run,
+	reduce:   orm.reduce,
+	getQ:     orm.getQ,
+	allQ:     orm.allQ,
+	runQ:     orm.runQ,
+	reduceQ:  orm.reduceQ,
+	close:    orm.close,
+	getOrFail: orm.getOrFail,
 
 	hydrateRow:          hydrateRow,
 	hydrateCommon:       hydrateCommon,
@@ -485,7 +466,6 @@ module.exports = {
 	mealByName:         mealByName,
 	mealById:           mealById,
 	getMeal:            getMeal,
-	allMeals:           allMeals,
 	deleteMeal:         deleteMeal,
 	updateMealName:     updateMealName,
 	setMealCals:        setMealCals,
@@ -497,9 +477,7 @@ module.exports = {
 	renamePlan:         renamePlan,
 	setPlanCals:        setPlanCals,
 	deletePlan:         deletePlan,
-	planIngredients:    planIngredients,
 
-	getPlanMeals:       getPlanMeals,
 	reorderPlanMeals:   reorderPlanMeals,
 
 	weekIngredients:    weekIngredients,
