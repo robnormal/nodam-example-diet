@@ -18,14 +18,14 @@ block body
   h2 #{plan.cals.toFixed(0)} Calories
 
   div(id="plan_meals")
-    each pm, ord in plan.p_meals
+    each pm, ord in plan.plan_meals
       div
         form(action="#{help.planUrl(plan)}", method="post")
           h3(class="plan_title")
             span(class="handle") +
             a(href="#{help.mealUrl(pm.meal)}") #{pm.meal.name}
             button(class="blinds", type="button") v
-            | &nbsp;- #{pm.meal.cals.toFixed(0)} calories
+            | &nbsp;- #{help.number(0, pm.meal.cals)} calories
             button(name="removeMeal", value="#{pm.id}") Remove
 
         form(class="food_in_meal", action="#{help.mealUrl(pm.meal)}", method="post")
@@ -35,7 +35,7 @@ block body
               th Grams
               th
                 input(type="hidden", name="ordinals", value="#{pm.ordinal}")
-            each m_food in pm.meal.foods
+            each m_food in pm.meal.meal_foods
               tr
                 td= m_food.food.name
                 td= m_food.food.grams
@@ -43,7 +43,7 @@ block body
 
 
   form(action="#{help.planUrl(plan)}", method="post")
-    input(type="hidden", name="ord", value=plan.p_meals.length + 1)
+    input(type="hidden", name="ord", value=plan.plan_meals.length + 1)
     select(name="meal_name", id="meal_name")
       each meal in all_meals
         option #{meal.name}

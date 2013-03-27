@@ -184,6 +184,10 @@ function mealByName(name) {
 		.mmapFmap(orm.Meal.hydrate);
 }
 
+function createMeal(name) {
+  return orm.runQuery(queries.meals_insert, { name: name });
+}
+
 function foodIngredients(food) {
 	if (food.type !== 'dish') {
 		return Async.result([]);
@@ -257,14 +261,14 @@ function setMealCals(meal) {
 	var cals = _.reduce(meal.foods, function(memo, m_food) {
 		return memo + m_food.cals;
 	}, 0);
-	return _.set(meal, 'cals', cals);
+	return meal.set('cals', cals);
 }
 
 function setPlanCals(plan) {
-	var cals = _.reduce(plan.p_meals, function(memo, p_meal) {
+	var cals = _.reduce(plan.plan_meals, function(memo, p_meal) {
 		return memo + p_meal.meal.cals;
 	}, 0);
-	return _.set(plan, 'cals', cals);
+	return plan.set('cals', cals);
 }
 
 function renamePlan(plan, name) {
@@ -275,21 +279,12 @@ function renamePlan(plan, name) {
 var allMeals = orm.dbAll(queries.meals + ' ORDER BY created_at DESC');
 
 function getPlanMeals(plan) {
-	return orm.dbAll(queries.plan_meals_with_meals + orm.condition({
-		plan_id: plan.id
-	}) + ' ORDER BY ordinal').mmap(function(rows) {
-		return _.map(rows, function(row) {
-			return {
-				id: orm.toInt(row.id),
-				plan_id: orm.toInt(row.plan_id),
-				ordinal: orm.toInt(row.ordinal),
-				meal: {
-					id: row.meal_id,
-					name: row.name
-				}
-			};
-		});
-	});
+	return orm.PlanMeal.find({ plan_id: plan.id }, { order_by: 'ordinal' })
+		.pipeMapM(function(p_meal) {
+			return orm.Meal.get({ id: p_meal.meal_id }).mmapFmap(function(meal) {
+					return p_meal.setMeal(meal);
+				});
+		}).mmap(M.Maybe.concat);
 }
 
 function getWeekPlans(week) {
@@ -317,21 +312,6 @@ function deleteFood(id) {
 		.then(orm.dbRun('DELETE FROM meal_foods ' + orm.condition({ food_id: id })));
 }
 
-function getFoodsInMeal(meal) {
-	return orm.dbAll(queries.meal_foods_with_foods + orm.condition({
-		meal_id: meal.id
-	})).mmapFmap(hydrateMealFood);
-}
-
-function fillMealFoods(meal) {
-	return getFoodsInMeal(meal)
-		.pipe(function(meal_foods) {
-			var meal2 = _.set(meal, 'foods', meal_foods);
-
-			return Async.result(setMealCals(meal2));
-		});
-}
-
 // ammounts = [ { food_id: { food: food, grams: number }, ...},  ...]
 function addAmounts(amounts) {
 	var totals = {};
@@ -349,40 +329,10 @@ function addAmounts(amounts) {
 	return totals;
 }
 
-function mealIngredients(meal) {
-	return getFoodsInMeal(meal).pipe(function(m_foods) {
-		return Async.mapM(m_foods, function(m_food) {
-			var food = m_food.food;
-			var amount = {};
-
-			if (food.type === 'ingredient') {
-				amount[food.id] = { food: food, grams: m_food.grams };
-
-				return Async.result([amount]);
-			} else {
-				return foodIngredients(food).mmap(function(ingreds) {
-					var total_in = _.reduce(ingreds, function(memo, ing) {
-						return memo + ing.grams;
-					}, 0);
-
-					_.each(ingreds, function(ingred) {
-
-						amount[ingred.id] = {
-							food: ingred,
-							grams: m_food.grams * ingred.grams / total_in
-						};
-					});
-					return amount;
-				});
-			}
-		}).mmap(addAmounts);
-	});
-}
-
 function planIngredients(plan) {
 	return getPlanMeals(plan)
 		.pipeMapM(function(p_meal) {
-			return mealIngredients(p_meal.meal);
+			return orm.mealIngredients(p_meal.meal);
 		})
 		.mmap(addAmounts);
 }
@@ -539,11 +489,10 @@ module.exports = {
 	deleteMeal:         deleteMeal,
 	updateMealName:     updateMealName,
 	setMealCals:        setMealCals,
+	createMeal:         createMeal,
 
 	getMealFood:        getMealFood,
-	fillMealFoods:      fillMealFoods,
 	deleteMealFood:     deleteMealFood,
-	mealIngredients:    mealIngredients,
 
 	renamePlan:         renamePlan,
 	setPlanCals:        setPlanCals,

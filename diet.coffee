@@ -268,8 +268,8 @@ actions = {
 
 
   meals: (match) ->
-    db.allMeals.pipe (meals) ->
-      Async.mapM(meals, db.fillMealFoods).pipe (fmeals) ->
+    orm.Meal.find().pipe (meals) ->
+      Async.mapM(meals, orm.fillMealFoods).pipe (fmeals) ->
         web.showView('meals', meals: fmeals)
 
   manageMeals: (match) ->
@@ -279,7 +279,7 @@ actions = {
           .then web.redirect('/meals')
 
       else if post.create
-        db.runQuery(queries.meals_insert, { name: post.name })
+        db.createMeal(post.name)
           .then(getLatestMeal)
           .pipeMaybe(
             web.error403(apology),
@@ -294,14 +294,16 @@ actions = {
     unless match[1]
       return web.error404
 
-    db.mealById(match[1]).pipeMaybe(web.error404, (meal) ->
-      db.fillMealFoods(meal).pipe (mealFilled) ->
-        db.mealIngredients(meal).pipe (ingreds) ->
-          web.showView('meal', {
-            meal_foods: mealFilled.foods
-            meal: mealFilled
-            ingredients: ingreds
-          })
+    orm.Meal.get({ id: match[1] }).pipeMaybe(
+      web.error404,
+      (meal) ->
+        orm.fillMealFoods(meal).pipe (mealFilled) ->
+          orm.mealIngredients(meal).pipe (ingreds) ->
+            web.showView('meal', {
+              meal_foods: mealFilled.meal_foods
+              meal: mealFilled
+              ingredients: ingreds
+            })
     )
 
   mealFoods: (match) ->
@@ -334,40 +336,32 @@ actions = {
     term = match[2]
     m =
       if term
-        db.allQ(db.queries.food_list, term: term ).mmap (rows) ->
-          names = _.map(rows || [], (row) -> row.name)
+        orm.Food.find(name: orm.like(term + '%')).mmap (rows) ->
+          names = _.map(rows, (row) -> row.name)
           JSON.stringify names
       else
-        nodam.result('')
+        nodam.result ''
     
     m.pipe web.success
 
   plans: (match) ->
-    db.all(queries.plans).pipe (plans) ->
+    orm.Plan.find().pipe (plans) ->
       web.showView('plans', plans: plans)
 
   planMeals: (match) ->
     plan_name = match[1] && web.uriToWord(match[1])
 
-    db.get(
-      queries.plans + orm.condition(name: plan_name)
-    ).pipeMaybe(
+    orm.Plan.get(name: plan_name).pipeMaybe(
       web.error403('No plan "' + plan_name + '" exists.'),
       (plan) ->
-          db.getPlanMeals(plan).pipeMapM( (p_meal) ->
-            db.fillMealFoods(p_meal.meal).mmap( (meal) ->
-              _.set(p_meal, 'meal', meal)
-            )
-          ).pipe (planMealsFilled) ->
-            planFilled = _.set(plan, 'p_meals', planMealsFilled)
-
-            db.allMeals.pipe (all_meals) ->
-              db.planIngredients(plan).pipe (ingreds) ->
-                web.showView('plan',
-                  plan: db.setPlanCals(planFilled)
-                  all_meals: all_meals
-                  ingredients: ingreds
-                )
+        orm.planWithFoods(plan).pipe (plan) ->
+          db.allMeals.pipe (all_meals) ->
+            db.planIngredients(plan).pipe (ingreds) ->
+              web.showView('plan',
+                plan: db.setPlanCals(plan)
+                all_meals: all_meals
+                ingredients: ingreds
+              )
     )
 
   managePlan: (match) ->
