@@ -488,7 +488,7 @@ function mealIngredients(meal) {
 
 function planIngredients(plan) {
 	return getPlanMeals(plan)
-		.pipeMmap(function(p_meal) {
+		.pipeMapM(function(p_meal) {
 			return mealIngredients(p_meal.meal);
 		})
 		.mmap(addAmounts);
@@ -597,7 +597,7 @@ function setWeekPlan(week, ord, plan_id) {
 
 function weekIngredients(week) {
   return getWeekPlans(week)
-		.pipeMmap(function(w_plan) {
+		.pipeMapM(function(w_plan) {
 			return planIngredients(w_plan.plan);
 		})
 		.mmap(addAmounts);

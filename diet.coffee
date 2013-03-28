@@ -347,7 +347,7 @@ actions = {
     ).pipeMaybe(
       web.error403('No plan "' + plan_name + '" exists.'),
       (plan) ->
-          db.getPlanMeals(plan).pipeMmap( (p_meal) ->
+          db.getPlanMeals(plan).pipeMapM( (p_meal) ->
             db.fillMealFoods(p_meal.meal).mmap( (meal) ->
               _.set(p_meal, 'meal', meal)
             )
