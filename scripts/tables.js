@@ -21,13 +21,17 @@ var queries = [
 	'CREATE TABLE IF NOT EXISTS week_plans (' +
 		'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ' +
 		'week_id INTEGER NOT NULL, plan_id INTEGER NOT NULL, ordinal INTEGER NOT NULL)',
-	'CREATE UNIQUE INDEX IF NOT EXISTS plan_ordinal ON week_plans (week_id, ordinal)'
+	'CREATE UNIQUE INDEX IF NOT EXISTS plan_ordinal ON week_plans (week_id, ordinal)',
+	'CREATE TABLE IF NOT EXISTS nutrients (' +
+		'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)',
+	'CREATE TABLE IF NOT EXISTS food_nutrients (' +
+		'food_id INTEGER NOT NULL, nutrient_id INTEGER NOT NULL, amount FLOAT)'
 ];
 
 var
 	sqlite = require('../../nodam/lib/sqlite.js'),
 	_      = require('../../nodam/lib/curry.js'),
-	nodam  = require('../../nodam/lib/nodam.js');
+	nodam  = require('../../nodam/lib/nodam.js'),
 	db  = require('../model.js');
 
 db.getDB(__dirname + '/../diet.db').pipe(function() {

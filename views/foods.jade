@@ -23,6 +23,7 @@ block body
           th Cals/100g
           th Grams
           th Ingredients
+          th Nutrients
           th
       tbody
         each food in foods
@@ -53,6 +54,11 @@ block body
                 else
                   | -
               td
+                if food.type === 'dish'
+                  | -
+                else
+                  a(href="/nutrientsin/#{help.wordToUri(food.name)}") nutrients
+              td
                 button(name="update", value="#{food.id}") Save
                 button(name="delete", value="#{food.id}") X
 
@@ -67,6 +73,7 @@ block body
             input(type="text", name="food_cals")
           td
             input(type="text", name="food_grams")
+          td
           td
           td
             button(name="create", value="1") Save

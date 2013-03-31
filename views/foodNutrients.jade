@@ -1,0 +1,31 @@
+extends layout
+
+block vars
+  - var title = 'Nutrients in ' + food.name
+
+block body
+  h1= title
+
+  table
+    tr
+      th Name
+      th Amt
+      th 
+    each f_nutrient in f_nutrients
+      form(action="/nutrientsin/#{help.wordToUri(food.name)}", method="post")
+        tr
+          td #{f_nutrient.nutrient.name}
+          td 
+            input(type="text", name="grams", value="#{f_nutrient.amount}")
+          td 
+            button(name="update", value="#{f_nutrient.nutrient_id}") Save
+            button(name="delete", value="#{f_nutrient.nutrient_id}") X
+    form(action="/nutrientsin/#{help.wordToUri(food.name)}", method="post")
+      tr
+        td
+          input(type="text", name="name", id="name")
+        td
+          input(type="text", name="amount")
+        td
+          button(name="create", value="1") Save
+

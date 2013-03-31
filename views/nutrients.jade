@@ -1,0 +1,24 @@
+extends layout
+
+block vars
+  - var title = 'Nutrients'
+
+block body
+  h1 Nutrients
+  table
+    tr
+      th Name
+      th
+    each nutrient in nutrients
+      form(action="/nutrient", method="post")
+        tr
+          td= nutrient.name
+          td
+            button(name="delete", value="#{nutrient.id}") X
+    form(action="/nutrient", method="post")
+      tr
+        td
+          input(type="text", name="name")
+        td
+          button(name="create", value="1") New nutrient
+

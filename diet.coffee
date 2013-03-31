@@ -9,7 +9,7 @@ nodam = require '../nodam/lib/nodam.js'
 sql   = require '../nodam/lib/sqlite.js'
 R     = require '../nodam/lib/restriction.js'
 
-orm   = require './lib/orm.js'
+orm   = require './lib/orm2.js'
 db    = require './model.js'
 web   = require './web.coffee'
 
@@ -463,6 +463,67 @@ actions = {
       )
     )
 
+  nutrients: (match) ->
+    orm.Nutrient.find().pipe (nutnts) ->
+      web.showView('nutrients', nutrients: nutnts)
+
+  nutrient: (match) ->
+    changes = web.getPost.pipe (post) ->
+      if post['delete']
+        orm.deleteNutrient post['delete']
+      else if post.create
+        orm.createNutrient post.name
+      else
+        # if nothing to do, send back to main page
+        nodam.result()
+
+    changes.then web.redirect('/nutrients')
+
+  foodNutrients: (match) ->
+    food_name = web.uriToWord match[1]
+
+    orm.Food.get({ name: food_name }).pipeMaybe \
+      web.error404,
+      (food) ->
+        orm.foodNutrients(food).pipe (nutnts) ->
+          web.showView('foodNutrients',
+            f_nutrients: nutnts
+            food: food
+          )
+
+  manageFoodNutrients: (match) ->
+    web.getPost.pipe (post) ->
+      food_name = web.uriToWord match[1]
+
+      orm.Food.get({ name: food_name }).pipeMaybe(
+        web.error403('Could not find food: ' + match[1]),
+        (food) ->
+          orm.foodNutrients(food).pipe (nutnts) ->
+            if post['delete']
+              orm.deleteFoodNutrient(food, post['delete'])
+            else if post.create
+              orm.createFoodNutrient(food, post.name, post.amount)
+            else
+              # if nothing to do, send back to main page
+              nodam.result()
+      ).then web.redirect('/nutrientsin/' + match[1])
+        .rescue (err) ->
+          logError(err).then(web.error403 err)
+
+  planNutrient: (match) ->
+    plan_name = web.uriToWord match[1]
+    nut_name = web.uriToWord match[2]
+    orm.Plan.get({ name: plan_name }).pipeMaybe(
+      web.error403('could not find ' + plan_name),
+      (plan) ->
+        orm.Nutrient.get({ name: nut_name }).pipeMaybe(
+          web.error403('could not find ' + nut_name),
+          (nutrient) ->
+            orm.planNutrientAmount(plan, nutrient).pipe (amount) ->
+              web.success(plan.name + ' has ' + amount + ' ' + nut_name)
+        )
+    )
+
   staticFile: (match) ->
     serveFile match[0]
 }
@@ -477,23 +538,41 @@ mimeTypes = {
 }
 
 path = require('path')
+
+endsWith = (str, suffix) ->
+  str.indexOf(suffix, str.length - suffix.length) != -1
+
+serveCompressed = (file) ->
+  getServePath =
+    if endsWith(file, '.css') || endsWith(file, '.js')
+      fs.exists(file + '.gz').pipe (bool) ->
+        serve = if bool then file + '.gz' else file
+
+        nodam.result serve
+    else
+      nodam.result file
+      
+  getServePath.pipe (serve) ->
+    fileStream = fs.createReadStream(serve)
+
+    nodam.get('response').pipe (resp) ->
+      Async.listen(fileStream, 'error', (err) ->
+        resp.status = 404
+        resp.write 'File not found.'
+
+        nodam.failure(resp.end())
+      ).pipe ->
+        mime = mimeTypes[path.extname(serve).substr(1)]
+
+        resp.status = 200
+        resp.setHeader('Content-Type', mime)
+        nodam.result(fileStream.pipe resp)
+
+
 serveFile = (file) ->
-  mime = mimeTypes[path.extname(file).substr(1)]
   filepath = __dirname + '/' + file
 
-  nodam.get('response').pipe (resp) ->
-    fileStream = fs.createReadStream(filepath)
-
-    Async.listen(fileStream, 'error', (err) ->
-      resp.status = 404
-      resp.write 'File not found.'
-
-      nodam.failure(resp.end())
-    ).pipe () ->
-      resp.status = 200
-      resp.setHeader('Content-Type', mime)
-      nodam.result(fileStream.pipe resp)
-
+  serveCompressed(filepath)
 
 routes = [
   [ '/',                   { GET: actions.root }]
@@ -508,6 +587,13 @@ routes = [
   [ /^\/weeks(\/?)$/,      { GET: actions.weeks }]
   [ /^\/week(\/?)$/,       { POST: actions.manageWeek }]
   [ /^\/week\/(.+)/,       { GET: actions.week, POST: actions.manageWeek }]
+
+  [ /^\/nutrientsin\/(.+)/,   { GET: actions.foodNutrients, POST: actions.manageFoodNutrients }]
+  [ /^\/nutrients(\/?)$/,      { GET: actions.nutrients }]
+  [ /^\/nutrient(\/?)$/,       { POST: actions.nutrient }]
+
+  [ /^\/plannutrient\/(.+)\/(.+)/, { GET: actions.planNutrient }]
+
 
   [ /^\/foodlist(\/?)\?term=(\w*)/, { GET: actions.foodList }],
   [ /^\/(assets\/.*)/, { GET: actions.staticFile } ]

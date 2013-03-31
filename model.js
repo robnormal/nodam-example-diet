@@ -245,7 +245,8 @@ function hydrateIngredient(row) {
 }
 
 function hydrateMealFood(row) {
-	var food = hydrateCommon(row, ['id', 'name', 'type', 'cals', 'grams']);
+	var food = hydrateCommon(row, ['id', 'name', 'type', 'cals']);
+	food.grams = row['food_grams'];
 	var m_food = hydrateCommon(row, ['meal_id', 'food_id', 'grams']);
 	m_food.food = food;
 
@@ -419,9 +420,12 @@ function getWeekPlans(week) {
 
 
 function deleteFood(id) {
+	var id_cond = orm.condition({ food_id: id });
+
   return dbRun('DELETE FROM foods ' + orm.condition({ id: id }))
-		.then(dbRun('DELETE FROM ingredients ' + orm.condition({ food_id: id })))
-		.then(dbRun('DELETE FROM meal_foods ' + orm.condition({ food_id: id })));
+		.then(dbRun('DELETE FROM ingredients ' + id_cond))
+		.then(dbRun('DELETE FROM meal_foods ' + id_cond))
+		.then(dbRun('DELETE FROM food_nutrients ' + id_cond));
 }
 
 function getFoodsInMeal(meal) {
@@ -474,9 +478,10 @@ function mealIngredients(meal) {
 
 					_.each(ingreds, function(ingred) {
 
+						console.log('mealFood:',m_food, '\ningredient:',ingred, '\nfood:',food);
 						amount[ingred.id] = {
 							food: ingred,
-							grams: m_food.grams * ingred.grams / total_in
+							grams: m_food.grams * ingred.grams / food.grams
 						};
 					});
 					return amount;
@@ -645,6 +650,7 @@ module.exports = {
 	allMeals:           allMeals,
 	updateMealName:     updateMealName,
 	setMealCals:        setMealCals,
+	deleteMeal:         deleteMeal,
 
 	getMealFood:        getMealFood,
 	fillMealFoods:      fillMealFoods,

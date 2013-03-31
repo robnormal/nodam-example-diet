@@ -108,6 +108,7 @@ helper =
   number: (digits, num) ->
     strs = (num + '').split('.')
     strs[0] + (if strs[1] then '.' + strs[1].slice(0, digits) else '')
+  wordToUri: wordToUri
 
 getView = (view, data) ->
   getJade('views/' + view + '.jade', _.set(data, 'help', helper))
