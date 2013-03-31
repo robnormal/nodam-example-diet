@@ -477,8 +477,6 @@ function mealIngredients(meal) {
 					}, 0);
 
 					_.each(ingreds, function(ingred) {
-
-						console.log('mealFood:',m_food, '\ningredient:',ingred, '\nfood:',food);
 						amount[ingred.id] = {
 							food: ingred,
 							grams: m_food.grams * ingred.grams / food.grams
