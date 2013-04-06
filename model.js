@@ -157,6 +157,8 @@ var queries = {
 		'VALUES (<%= meal_id %>, <%= food_id %>, <%= grams %>)',
 	food_update_cals:
 		"UPDATE foods SET cals='<%= cals %>' WHERE id=<%= id %>",
+	food_update_grams:
+		"UPDATE foods SET grams='<%= grams %>' WHERE id=<%= id %>",
 	food_list:
     "SELECT name FROM foods WHERE name LIKE '<%= term %>%'",
 	plans:
@@ -246,7 +248,7 @@ function hydrateIngredient(row) {
 
 function hydrateMealFood(row) {
 	var food = hydrateCommon(row, ['id', 'name', 'type', 'cals']);
-	food.grams = row['food_grams'];
+	food.grams = row.food_grams;
 	var m_food = hydrateCommon(row, ['meal_id', 'food_id', 'grams']);
 	m_food.food = food;
 

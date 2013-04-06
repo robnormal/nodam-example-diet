@@ -100,10 +100,10 @@
       };
       if (post['food_cals_' + food_id]) {
         data.cals = post['food_cals_' + food_id];
-        templ = queries.foods_update_w_cals;
+        templ = queries.food_update_cals;
       } else if (post['food_grams_' + food_id]) {
         data.grams = post['food_grams_' + food_id];
-        templ = queries.foods_update_w_grams;
+        templ = queries.food_update_grams;
       }
       return db.runQuery(templ, data).then(db.getFood(food_id)).pipeMaybe(nodam.failure('An unknown error occured.'), db.updateFoodCals);
     } else {
@@ -510,6 +510,26 @@
       });
     },
     nutrient: function(match) {
+      return orm.nutrientWithFoods({
+        name: match[1]
+      }).pipeMaybe(web.error404, function(nutrient) {
+        return orm.FoodNutrient.find({
+          nutrient_id: nutrient.id
+        }).pipeMapM(function(f_nut) {
+          return orm.Food.get({
+            id: f_nut.food_id
+          }).mmapFmap(function(food) {
+            return f_nut.setFood(food);
+          });
+        }).mmap(M.Maybe.concat).pipe(function(f_nuts) {
+          return web.showView('nutrient', {
+            f_nutrients: f_nuts,
+            nutrient: nutrient
+          });
+        });
+      });
+    },
+    manageNutrient: function(match) {
       var changes;
       changes = web.getPost.pipe(function(post) {
         if (post['delete']) {
@@ -538,9 +558,11 @@
     },
     manageFoodNutrients: function(match) {
       return web.getPost.pipe(function(post) {
+        var food_name;
+        food_name = web.uriToWord(match[1]);
         return orm.Food.get({
-          id: match[1]
-        }).pipeMaybe(web.error404, function(food) {
+          name: food_name
+        }).pipeMaybe(web.error403('Could not find food: ' + match[1]), function(food) {
           return orm.foodNutrients(food).pipe(function(nutnts) {
             if (post['delete']) {
               return orm.deleteFoodNutrient(food, post['delete']);
@@ -686,8 +708,9 @@
         GET: actions.nutrients
       }
     ], [
-      /^\/nutrient(\/?)$/, {
-        POST: actions.nutrient
+      /^\/nutrient(?:\/(.+)?)/, {
+        GET: actions.nutrient,
+        POST: actions.manageNutrient
       }
     ], [
       /^\/plannutrient\/(.+)\/(.+)/, {

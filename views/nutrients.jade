@@ -12,7 +12,8 @@ block body
     each nutrient in nutrients
       form(action="/nutrient", method="post")
         tr
-          td= nutrient.name
+          td
+            a(href="/nutrient/#{nutrient.name}")= nutrient.name
           td
             button(name="delete", value="#{nutrient.id}") X
     form(action="/nutrient", method="post")

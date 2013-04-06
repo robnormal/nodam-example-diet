@@ -20,7 +20,7 @@ fs = nodam.fs()
 M  = nodam.Maybe
 Async = nodam.Async
 
-# nodam.debug true
+nodam.debug true
 
 GET = 'GET'
 POST = 'POST'
@@ -68,10 +68,10 @@ updateFood = (post) ->
 
     if post['food_cals_' + food_id]
       data.cals = post['food_cals_' + food_id]
-      templ = queries.foods_update_w_cals
+      templ = queries.food_update_cals
     else if post['food_grams_' + food_id]
       data.grams = post['food_grams_' + food_id]
-      templ = queries.foods_update_w_grams
+      templ = queries.food_update_grams
 
     db.runQuery(templ, data)
       .then(db.getFood(food_id))
@@ -468,6 +468,15 @@ actions = {
       web.showView('nutrients', nutrients: nutnts)
 
   nutrient: (match) ->
+    orm.nutrientWithFoods({ 'n_name': match[1] }).pipeMaybe \
+      web.error404,
+      (nutrient) ->
+        web.showView('nutrient',
+          f_nutrients: nutrient.food_nutrients
+          nutrient: nutrient
+        )
+
+  manageNutrient: (match) ->
     changes = web.getPost.pipe (post) ->
       if post['delete']
         orm.deleteNutrient post['delete']
@@ -590,7 +599,7 @@ routes = [
 
   [ /^\/nutrientsin\/(.+)/,   { GET: actions.foodNutrients, POST: actions.manageFoodNutrients }]
   [ /^\/nutrients(\/?)$/,      { GET: actions.nutrients }]
-  [ /^\/nutrient(\/?)$/,       { POST: actions.nutrient }]
+  [ /^\/nutrient(?:\/(.+)?)/,       { GET: actions.nutrient, POST: actions.manageNutrient }]
 
   [ /^\/plannutrient\/(.+)\/(.+)/, { GET: actions.planNutrient }]
 
