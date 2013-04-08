@@ -15,12 +15,13 @@ web   = require './web.coffee'
 
 qs    = require 'querystring'
 jade  = require 'jade'
+util  = require 'util'
 
 fs = nodam.fs()
 M  = nodam.Maybe
 Async = nodam.Async
 
-nodam.debug true
+# nodam.debug true
 
 GET = 'GET'
 POST = 'POST'
@@ -519,6 +520,18 @@ actions = {
         .rescue (err) ->
           logError(err).then(web.error403 err)
 
+  mealNutrients: (match) ->
+    meal_name = web.uriToWord match[1]
+    orm.Meal.get({ name: meal_name }).pipeMaybe(
+      web.error403('could not find meal ' + meal_name),
+      (meal) ->
+        orm.allNutrientsIn(orm.mealIngredients(meal)).pipe (amts) ->
+          web.showView('mealNutrients', {
+            meal: meal
+            amts: amts
+          })
+    )
+
   planNutrient: (match) ->
     plan_name = web.uriToWord match[1]
     nut_name = web.uriToWord match[2]
@@ -532,6 +545,58 @@ actions = {
               web.success(plan.name + ' has ' + amount + ' ' + nut_name)
         )
     )
+
+  nutrientRatio2: (match) ->
+    nut1_m = orm.Nutrient.get({ name: match[1] })
+    nut2_m = orm.Nutrient.get({ name: match[2] })
+    food_m = orm.Food.get({ name: match[3] })
+
+    nodam.combine([nut1_m, nut2_m, food_m]).pipeArray (m_nut1, m_nut2, m_food) ->
+      if m_nut1.isNothing()
+        web.error403('No such nutrient: ' + match[1])
+      else if m_nut2.isNothing()
+        web.error403('No such nutrient: ' + match[2])
+      else if m_food.isNothing()
+        web.error403('No such food: ' + match[3])
+      else
+        [nut1, nut2, food] = M.Maybe.concat([m_nut1, m_nut2, m_food])
+
+        orm.nutrientPerNutrient(nut1.id, nut2.id, food.id).pipe (ratio) ->
+          web.success(
+            m_food.fromJust().name + ' has ' + ratio + ' ' +
+            nut1.name + ' per ' + nut2.name
+          )
+
+  nutrientRatio: (match) ->
+    orm.Nutrient.get({ name: match[1] }).pipeMaybe \
+      web.error403('No such nutrient: ' + match[1]),
+      (nut1) ->
+        orm.Nutrient.get({ name: match[2] }).pipeMaybe \
+        web.error403('No such nutrient: ' + match[2]),
+        (nut2) ->
+          food_m = orm.Food.get({ name: match[3] }).pipeMaybe \
+            web.error403('No such food: ' + match[3]),
+            (food) ->
+              orm.nutrientPerNutrient(nut1.id, nut2.id, food.id).pipe (ratio) ->
+                web.success(
+                  m_food.fromJust().name + ' has ' + ratio + ' ' +
+                  nut1.name + ' per ' + nut2.name
+                )
+
+  ratioRanking: (match) ->
+    orm.Nutrient.get({ name: match[1] }).pipeMaybe \
+      web.error403('No such nutrient: ' + match[1]),
+      (nut1) ->
+        orm.Nutrient.get({ name: match[2] }).pipeMaybe \
+        web.error403('No such nutrient: ' + match[2]),
+        (nut2) ->
+          orm.ratioRank(nut1.id, nut2.id).pipe (food_ratios) ->
+            web.showView('ratioRank', {
+              nutrient_1: nut1
+              nutrient_2: nut2
+              food_ratios: food_ratios
+            })
+
 
   staticFile: (match) ->
     serveFile match[0]
@@ -600,8 +665,11 @@ routes = [
   [ /^\/nutrientsin\/(.+)/,   { GET: actions.foodNutrients, POST: actions.manageFoodNutrients }]
   [ /^\/nutrients(\/?)$/,      { GET: actions.nutrients }]
   [ /^\/nutrient(?:\/(.+)?)/,       { GET: actions.nutrient, POST: actions.manageNutrient }]
+  [ /^\/nutrient-ratio\/(.+)\/(.+)\/(.+)/, { GET: actions.nutrientRatio }]
+  [ /^\/nutrient-ratios\/(.+)\/(.+)/, { GET: actions.ratioRanking }]
 
-  [ /^\/plannutrient\/(.+)\/(.+)/, { GET: actions.planNutrient }]
+  [ /^\/meal-nutrients\/(.+)/, { GET: actions.mealNutrients }]
+  [ /^\/plan-nutrient\/(.+)\/(.+)/, { GET: actions.planNutrient }]
 
 
   [ /^\/foodlist(\/?)\?term=(\w*)/, { GET: actions.foodList }],

@@ -1,0 +1,13 @@
+extends layout
+
+block vars
+  - var title = nutrient.name
+
+block body
+  h1= title
+
+  table
+    each f_nut in f_nutrients
+      tr
+        td= f_nut.food.name
+        td= f_nut.amount

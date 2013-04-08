@@ -1,0 +1,17 @@
+extends layout
+
+block vars
+  - var title = 'Rankings for ' + nutrient_1.name + ' per ' + nutrient_2.name
+
+block body
+  h1= title
+
+  table
+    tr
+      th Name
+      th Ratio
+    each food_ratio in food_ratios
+        tr
+          td= food_ratio.food.name
+          td= help.number(3, food_ratio.ratio)
+

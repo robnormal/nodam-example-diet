@@ -1,0 +1,19 @@
+extends layout
+
+block vars
+  - var title = 'Nutrients in ' + meal.name
+
+block body
+  h1= title
+
+  table(id="ingredients")
+    thead
+      tr
+        th Nutrient
+        th Amount per meal
+    tbody
+      each amt in amts
+        tr
+          td= amt.nutrient.name
+          td= help.number(2, amt.amount)
+

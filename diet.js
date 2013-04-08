@@ -32,6 +32,8 @@
 
   Async = nodam.Async;
 
+  nodam.debug(true);
+
   GET = 'GET';
 
   POST = 'POST';
@@ -511,21 +513,11 @@
     },
     nutrient: function(match) {
       return orm.nutrientWithFoods({
-        name: match[1]
+        'n_name': match[1]
       }).pipeMaybe(web.error404, function(nutrient) {
-        return orm.FoodNutrient.find({
-          nutrient_id: nutrient.id
-        }).pipeMapM(function(f_nut) {
-          return orm.Food.get({
-            id: f_nut.food_id
-          }).mmapFmap(function(food) {
-            return f_nut.setFood(food);
-          });
-        }).mmap(M.Maybe.concat).pipe(function(f_nuts) {
-          return web.showView('nutrient', {
-            f_nutrients: f_nuts,
-            nutrient: nutrient
-          });
+        return web.showView('nutrient', {
+          f_nutrients: nutrient.food_nutrients,
+          nutrient: nutrient
         });
       });
     },
@@ -589,6 +581,66 @@
         }).pipeMaybe(web.error403('could not find ' + nut_name), function(nutrient) {
           return orm.planNutrientAmount(plan, nutrient).pipe(function(amount) {
             return web.success(plan.name + ' has ' + amount + ' ' + nut_name);
+          });
+        });
+      });
+    },
+    nutrientRatio2: function(match) {
+      var food_m, nut1_m, nut2_m;
+      nut1_m = orm.Nutrient.get({
+        name: match[1]
+      });
+      nut2_m = orm.Nutrient.get({
+        name: match[2]
+      });
+      food_m = orm.Food.get({
+        name: match[3]
+      });
+      return nodam.combine([nut1_m, nut2_m, food_m]).pipeArray(function(m_nut1, m_nut2, m_food) {
+        var food, nut1, nut2, _ref;
+        if (m_nut1.isNothing()) {
+          return web.error403('No such nutrient: ' + match[1]);
+        } else if (m_nut2.isNothing()) {
+          return web.error403('No such nutrient: ' + match[2]);
+        } else if (m_food.isNothing()) {
+          return web.error403('No such food: ' + match[3]);
+        } else {
+          _ref = M.Maybe.concat([m_nut1, m_nut2, m_food]), nut1 = _ref[0], nut2 = _ref[1], food = _ref[2];
+          return orm.nutrientPerNutrient(nut1.id, nut2.id, food.id).pipe(function(ratio) {
+            return web.success(m_food.fromJust().name + ' has ' + ratio + ' ' + nut1.name + ' per ' + nut2.name);
+          });
+        }
+      });
+    },
+    nutrientRatio: function(match) {
+      return orm.Nutrient.get({
+        name: match[1]
+      }).pipeMaybe(web.error403('No such nutrient: ' + match[1]), function(nut1) {
+        return orm.Nutrient.get({
+          name: match[2]
+        }).pipeMaybe(web.error403('No such nutrient: ' + match[2]), function(nut2) {
+          var food_m;
+          return food_m = orm.Food.get({
+            name: match[3]
+          }).pipeMaybe(web.error403('No such food: ' + match[3]), function(food) {
+            return orm.nutrientPerNutrient(nut1.id, nut2.id, food.id).pipe(function(ratio) {
+              return web.success(m_food.fromJust().name + ' has ' + ratio + ' ' + nut1.name + ' per ' + nut2.name);
+            });
+          });
+        });
+      });
+    },
+    ratioRanking: function(match) {
+      return orm.Nutrient.get({
+        name: match[1]
+      }).pipeMaybe(web.error403('No such nutrient: ' + match[1]), function(nut1) {
+        return orm.Nutrient.get({
+          name: match[2]
+        }).pipeMaybe(web.error403('No such nutrient: ' + match[2]), function(nut2) {
+          return orm.ratioRank(nut1.id, nut2.id).pipe(function(food_ratios) {
+            return web.showView('ratioRank', {
+              food_ratios: food_ratios
+            });
           });
         });
       });
@@ -711,6 +763,14 @@
       /^\/nutrient(?:\/(.+)?)/, {
         GET: actions.nutrient,
         POST: actions.manageNutrient
+      }
+    ], [
+      /^\/nutrient-ratio\/(.+)\/(.+)\/(.+)/, {
+        GET: actions.nutrientRatio
+      }
+    ], [
+      /^\/nutrient-ratios\/(.+)\/(.+)/, {
+        GET: actions.ratioRanking
       }
     ], [
       /^\/plannutrient\/(.+)\/(.+)/, {
