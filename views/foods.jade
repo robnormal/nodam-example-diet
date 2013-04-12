@@ -5,7 +5,9 @@ block vars
 
 block append head
   style
-    td:nth-child(3), td:nth-child(3) input, td:nth-child(4), td:nth-child(4) input {
+    td:nth-child(3), td:nth-child(3) input,
+    td:nth-child(4), td:nth-child(4) input,
+    td:nth-child(5), td:nth-child(5) input {
       width: 4em;
     }
 
@@ -14,13 +16,14 @@ block body
 
     table
       colgroup
-        col(span="3")
+        col(span="4")
         col(id="weight")
       thead
         tr
           th Food
           th Type
           th Cals/100g
+          th Carbs/100g
           th Grams
           th Ingredients
           th Nutrients
@@ -43,6 +46,9 @@ block body
                   input(type="text", name="food_cals_#{food.id}", value="#{food.cals}")
                 else
                   | #{help.number(2, food.cals)}
+
+              td= help.number(2, food.carbs)
+
               td(class="short")
                 if food.type === 'dish'
                   input(type="text", name="food_grams_#{food.id}", value="#{food.grams || ''}")

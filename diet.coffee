@@ -200,8 +200,14 @@ updateWeek = (post, week) ->
 
 actions = {
   root: (match) ->
-    db.allFoods.pipe (rows) ->
-      web.showView('foods', foods: rows)
+    orm.Nutrient.get({ name: 'carbohydrates' }).pipeMaybe \
+      web.error403('WTF?! Recreate "carbohydrates" nutrient.'),
+      (carbs_nut) ->
+        orm.allFoods.pipeMapM((food) ->
+          orm.foodNutrient(food, carbs_nut).mmap (carbs) ->
+            food.set('carbs', carbs)
+        ).pipe (foods) ->
+          web.showView('foods', foods: foods)
 
   food: (match) ->
     changes = web.getPost.pipe (post) ->
@@ -664,7 +670,7 @@ routes = [
 
   [ /^\/nutrientsin\/(.+)/,   { GET: actions.foodNutrients, POST: actions.manageFoodNutrients }]
   [ /^\/nutrients(\/?)$/,      { GET: actions.nutrients }]
-  [ /^\/nutrient(?:\/(.+)?)/,       { GET: actions.nutrient, POST: actions.manageNutrient }]
+  [ /^\/nutrient(?:\/(.+)?)?/,       { GET: actions.nutrient, POST: actions.manageNutrient }]
   [ /^\/nutrient-ratio\/(.+)\/(.+)\/(.+)/, { GET: actions.nutrientRatio }]
   [ /^\/nutrient-ratios\/(.+)\/(.+)/, { GET: actions.ratioRanking }]
 
