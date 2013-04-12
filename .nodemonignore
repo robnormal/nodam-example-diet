@@ -1,0 +1,7 @@
+# vim swap files
+:/\.[^/]+\.sw\w$
+
+diet.db
+diet.db-journal
+*~
+.*
