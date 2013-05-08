@@ -4,19 +4,16 @@ Error.stackTraceLimit = Infinity
 process.on 'error', (err) ->
   console.log err.stack
 
-_     = require '../nodam/lib/curry.js'
-nodam = require '../nodam/lib/nodam.js'
-sql   = require '../nodam/lib/sqlite.js'
-R     = require '../nodam/lib/restriction.js'
-
 orm   = require './lib/orm2.js'
 db    = require './model.js'
 web   = require './web.coffee'
 
+nodam = require 'nodam'
 qs    = require 'querystring'
 jade  = require 'jade'
 util  = require 'util'
 
+_     = nodam._
 fs = nodam.fs()
 M  = nodam.Maybe
 Async = nodam.Async

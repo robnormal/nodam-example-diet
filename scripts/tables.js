@@ -29,9 +29,9 @@ var queries = [
 ];
 
 var
-	sqlite = require('../../nodam/lib/sqlite.js'),
-	_      = require('../../nodam/lib/curry.js'),
-	nodam  = require('../../nodam/lib/nodam.js'),
+	nodam  = require('nodam'),
+	_      = nodam._,
+	sqlite = nodam.sqlite(),
 	db  = require('../model.js');
 
 db.getDB(__dirname + '/../diet.db').pipe(function() {

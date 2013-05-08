@@ -1,11 +1,11 @@
 var
-  _      = require('../nodam/lib/curry.js'),
-  orm    = require('./lib/orm.js'),
-  nodam  = require('../nodam/lib/nodam.js'),
-  sql    = require('../nodam/lib/sqlite.js'),
-	R      = require('../nodam/lib/restriction.js'),
+  nodam  = require('nodam'),
+  _      = nodam._,
+	R      = nodam.restriction,
+  sql    = nodam.sqlite(),
   M      = nodam.Maybe,
 	Async  = nodam.Async,
+  orm    = require('./lib/orm.js'),
 	util = require('util');
 
 var __slice = [].slice;
@@ -347,7 +347,7 @@ function ingredientsForFood(food) {
 				orm.condition({ food_id: food.id }) +
 				' ORDER BY i.grams DESC'
 		) .mmap(
-			_.curry(fmap, hydrateIngredient)
+			_.partial(fmap, hydrateIngredient)
 		) .pipe(function (ingredients) {
 			var $food = _.set(food, 'ingredients', ingredients);
 

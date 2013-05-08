@@ -1,5 +1,5 @@
 var orm = require('../lib/orm.js');
-var _ = require('../../nodam/lib/curry.js');
+var _ = require('nodam')._;
 
 function doesntThrow(assert, f, err) {
 	try {
