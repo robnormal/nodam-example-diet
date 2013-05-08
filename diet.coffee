@@ -692,4 +692,4 @@ require('http').createServer((request, response) ->
       ),
       { request: request, response: response }
     )
-).listen(1337, '127.0.0.1')
+).listen(1337)

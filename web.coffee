@@ -1,5 +1,5 @@
-_ = require("../nodam/lib/curry.js")
-nodam = require("../nodam/lib/nodam.js")
+nodam = require 'nodam'
+_ = nodam._
 
 qs = require('querystring')
 jade = require('jade')
