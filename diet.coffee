@@ -670,9 +670,9 @@ routes = [
 
   [ /^\/nutrientsin\/(.+)/,   { GET: actions.foodNutrients, POST: actions.manageFoodNutrients }]
   [ /^\/nutrients(\/?)$/,      { GET: actions.nutrients }]
-  [ /^\/nutrient(?:\/(.+)?)?/,       { GET: actions.nutrient, POST: actions.manageNutrient }]
   [ /^\/nutrient-ratio\/(.+)\/(.+)\/(.+)/, { GET: actions.nutrientRatio }]
   [ /^\/nutrient-ratios\/(.+)\/(.+)/, { GET: actions.ratioRanking }]
+  [ /^\/nutrient(?:\/(.+)?)?/,       { GET: actions.nutrient, POST: actions.manageNutrient }]
 
   [ /^\/meal-nutrients\/(.+)/, { GET: actions.mealNutrients }]
   [ /^\/plan-nutrient\/(.+)\/(.+)/, { GET: actions.planNutrient }]

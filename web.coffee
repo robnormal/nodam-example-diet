@@ -1,9 +1,5 @@
 _ = require("../nodam/lib/curry.js")
 nodam = require("../nodam/lib/nodam.js")
-sql = require("../nodam/lib/sqlite.js")
-R = require('../nodam/lib/restriction.js')
-orm = require("./lib/orm.js")
-model = require("./model.js")
 
 qs = require('querystring')
 jade = require('jade')
