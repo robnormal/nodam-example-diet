@@ -1,7 +1,7 @@
 var
-	sqlite = require(__dirname + '/../../nodam/lib/sqlite.js'),
-	_      = require(__dirname + '/../../nodam/lib/curry.js'),
-	nodam  = require(__dirname + '/../../nodam/lib/nodam.js');
+	nodam  = require('nodam'),
+	sqlite = nodam.sqlite,
+	_      = nodam._;
 
 var queries = [
 	'ALTER TABLE plan_meals RENAME TO _temp_plan_meals',
