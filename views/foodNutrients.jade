@@ -14,7 +14,8 @@ block body
     each f_nutrient in f_nutrients
       form(action="/nutrientsin/#{help.wordToUri(food.name)}", method="post")
         tr
-          td #{f_nutrient.nutrient.name}
+          td
+            a(href="/nutrient/#{f_nutrient.nutrient.name}")= f_nutrient.nutrient.name
           td 
             input(type="text", name="grams", value="#{f_nutrient.amount}")
           td 
