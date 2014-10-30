@@ -7,7 +7,12 @@ block body
   h1= title
 
   table
+    tr
+      th Food
+      th per 100g
+      th per calorie
     each f_nut in f_nutrients
       tr
         td= f_nut.food.name
         td= f_nut.amount
+        td= help.number(2, f_nut.amount / f_nut.food.cals)
