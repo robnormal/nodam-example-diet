@@ -4,7 +4,11 @@
 	"author": "Rob Rosenbaum <rob@robrosenbaum.com>",
 	"description": "Example app for nodam",
 	"repository": { "type": "git", "url": "git://github.com/robnormal/nodam-example-diet.git" },
-	"dependencies"  : { "nodam": "", "jade": "" },
+	"dependencies"  : {
+		"nodam": "git://github.com/robnormal/nodam.git",
+		"jade": "",
+		"coffee-script": ""
+	},
 	"license": "MIT"
 }
 
